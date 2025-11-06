@@ -1,0 +1,23 @@
+# env
+.env
+*.env
+
+# venv
+venv/
+
+# локальные данные
+data/
+*.db
+tasks.json
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
