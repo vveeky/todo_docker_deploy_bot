@@ -14,6 +14,7 @@ tasks.json
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyc
 
 # IDE
 .vscode/

@@ -10,6 +10,8 @@ from aiogram.types import (
 )
 from aiogram.filters import Command
 
+from app.utils.ui import show_screen
+
 start_router = Router()
 
 
@@ -59,35 +61,19 @@ HELP_TEXT = (
 @start_router.callback_query(F.data == "cmd_start")
 async def start_cmd(event: Union[Message, CallbackQuery]):
     if isinstance(event, Message):
-        await event.answer(START_TEXT, reply_markup=build_start_keyboard())
-    else:
-        await event.answer()
         try:
-            await event.message.edit_text(
-                START_TEXT,
-                reply_markup=build_start_keyboard(),
-            )
+            await event.delete()  # убрать команду из чата
         except Exception:
-            await event.message.answer(
-                START_TEXT,
-                reply_markup=build_start_keyboard(),
-            )
+            pass
+    await show_screen(event, START_TEXT, reply_markup=build_start_keyboard())
 
 
 @start_router.message(Command("help"))
 @start_router.callback_query(F.data == "cmd_help")
 async def help_cmd(event: Union[Message, CallbackQuery]):
     if isinstance(event, Message):
-        await event.answer(HELP_TEXT, reply_markup=build_help_keyboard())
-    else:
-        await event.answer()
         try:
-            await event.message.edit_text(
-                HELP_TEXT,
-                reply_markup=build_help_keyboard(),
-            )
+            await event.delete()
         except Exception:
-            await event.message.answer(
-                HELP_TEXT,
-                reply_markup=build_help_keyboard(),
-            )
+            pass
+    await show_screen(event, HELP_TEXT, reply_markup=build_help_keyboard())

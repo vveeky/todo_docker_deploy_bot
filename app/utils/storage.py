@@ -53,14 +53,17 @@ async def save_state(state: Dict[str, Any]) -> None:
         await _save_state_unlocked(state)
 
 
-def _next_id(tasks: List[Dict[str, Any]]) -> int:
-    ids = [t.get("id", 0) for t in tasks if isinstance(t.get("id"), int)]
-    return (max(ids) + 1) if ids else 1
-
-
-def _utcnow_iso() -> str:
-    import datetime as dt
+def _now_iso() -> str:
     return dt.datetime.now().replace(microsecond=0).isoformat()
+
+
+def _next_id_for_user(tasks: List[Dict[str, Any]], user_id: int) -> int:
+    ids = [
+        t.get("id", 0)
+        for t in tasks
+        if isinstance(t.get("id"), int) and t.get("user_id") == user_id
+    ]
+    return (max(ids) + 1) if ids else 1
 
 
 async def list_tasks() -> List[Dict[str, Any]]:
@@ -73,10 +76,10 @@ async def list_user_tasks(user_id: int) -> List[Dict[str, Any]]:
     return [t for t in tasks if t.get("user_id") == user_id]
 
 
-async def get_task(task_id: int) -> Optional[Dict[str, Any]]:
+async def get_task(task_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     tasks = await list_tasks()
     for t in tasks:
-        if t.get("id") == task_id:
+        if t.get("id") == task_id and t.get("user_id") == user_id:
             return t
     return None
 
@@ -85,14 +88,14 @@ async def add_task(user_id: int, text: str) -> Dict[str, Any]:
     async with _lock:
         state = await _load_state_unlocked()
         tasks = state.setdefault("tasks", [])
-        tid = _next_id(tasks)
+        tid = _next_id_for_user(tasks, user_id)
         task = {
             "id": tid,
             "user_id": user_id,
             "text": text,
             "is_done": 0,
             "due_at": None,
-            "created_at": _utcnow_iso(),
+            "created_at": _now_iso(),
         }
         tasks.append(task)
         await _save_state_unlocked(state)
