@@ -1,6 +1,7 @@
 # app/db/core.py
 import os
 import logging
+import secrets
 from typing import Optional
 
 import asyncpg
@@ -63,6 +64,14 @@ async def init_db_and_schema() -> None:
             """
         )
 
+        await conn.execute(
+            """
+            ALTER TABLE user_settings
+            ADD COLUMN IF NOT EXISTS web_token TEXT UNIQUE,
+            ADD COLUMN IF NOT EXISTS web_token_rotated_at TIMESTAMPTZ;
+            """
+        )
+
     logger.info("Схема БД проверена/создана")
 
 
@@ -109,3 +118,74 @@ async def set_user_tz_offset(user_id: int, offset_minutes: int) -> None:
             user_id,
             offset_minutes,
         )
+
+WEB_TOKEN_BYTES = 32  # минимум 32 байта энтропии
+
+
+def _generate_web_token() -> str:
+    # URL-safe base64,entropy >= 32 bytes
+    return secrets.token_urlsafe(WEB_TOKEN_BYTES)
+
+
+async def get_or_create_web_token(user_id: int) -> str:
+    """
+    Вернёт существующий web_token пользователя или создаст новый.
+    """
+    global _pool  # или как у тебя называется пул
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT web_token FROM user_settings WHERE user_id = $1",
+            user_id,
+        )
+        if row and row["web_token"]:
+            return row["web_token"]
+
+        token = _generate_web_token()
+        await conn.execute(
+            """
+            INSERT INTO user_settings (user_id, web_token, web_token_rotated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (user_id) DO UPDATE
+            SET web_token = EXCLUDED.web_token,
+                web_token_rotated_at = EXCLUDED.web_token_rotated_at
+            """,
+            user_id,
+            token,
+        )
+        return token
+
+
+async def rotate_web_token(user_id: int) -> str:
+    """
+    Всегда создаёт новый web_token, старый становится невалидным.
+    """
+    global _pool
+    token = _generate_web_token()
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE user_settings
+            SET web_token = $2,
+                web_token_rotated_at = NOW()
+            WHERE user_id = $1
+            """,
+            user_id,
+            token,
+        )
+    return token
+
+
+async def get_user_id_by_token(token: str) -> Optional[int]:
+    """
+    Находит user_id по токену. Если токен не найден — None.
+    """
+    if not token:
+        return None
+
+    global _pool
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT user_id FROM user_settings WHERE web_token = $1",
+            token,
+        )
+    return int(row["user_id"]) if row else None

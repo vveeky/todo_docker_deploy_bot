@@ -15,7 +15,12 @@ from aiogram.fsm.context import FSMContext
 
 from app.utils.ui import show_screen
 from app.states.time_settings import TimeSettingsStates
-from app.db.core import get_user_tz_offset, set_user_tz_offset
+from app.db.core import (
+    get_user_tz_offset,
+    set_user_tz_offset,
+    get_or_create_web_token,
+    rotate_web_token,
+)
 
 start_router = Router()
 
@@ -87,8 +92,8 @@ def build_help_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def build_site_keyboard(uid: int) -> InlineKeyboardMarkup:
-    python_url = f"{PYTHON_BASE}/?user_id={uid}"
+def build_site_keyboard(token: str) -> InlineKeyboardMarkup:
+    python_url = f"{PYTHON_BASE}/?token={token}"
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -100,12 +105,19 @@ def build_site_keyboard(uid: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="♻️ Сбросить веб-токен",
+                    callback_data="web:reset_token",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="⬅️ Назад к командам",
                     callback_data="cmd_help",
                 ),
             ],
         ]
     )
+
 
 
 # ===== /start (+ callback cmd_start) =====
@@ -130,15 +142,18 @@ async def start_cmd(
         server_time_str = now.strftime("%H:%M")
 
         await state.set_state(TimeSettingsStates.waiting_for_time)
-        await show_screen(
-            event,
-            (
-                "Перед началом работы нужно настроить время.\n\n"
-                f"Сейчас на сервере: {server_time_str}.\n\n"
-                "Напиши, сколько у тебя сейчас времени, в формате HH:MM.\n"
-                "Минуты должны совпадать с минутами, показанными выше."
-            ),
+
+        text = (
+            "Перед началом работы нужно настроить время.\n\n"
+            f"Сейчас на сервере: {server_time_str}.\n\n"
+            "Напиши, сколько у тебя сейчас времени, в формате HH:MM.\n"
+            "Минуты должны совпадать с минутами, показанными выше."
         )
+
+        # Отправляем отдельное сообщение, которое не будет редактироваться
+        msg = event.message if isinstance(event, CallbackQuery) else event
+        await msg.answer(text)
+
         return
 
     # 3. обычный стартовый экран
@@ -149,6 +164,7 @@ async def start_cmd(
             pass
 
     await show_screen(event, START_TEXT, reply_markup=build_start_keyboard())
+
 
 
 # ===== /help (+ callback cmd_help) =====
@@ -177,21 +193,70 @@ async def help_cmd(event: Union[Message, CallbackQuery]):
 async def cmd_site(event: Union[Message, CallbackQuery]):
     if isinstance(event, CallbackQuery):
         await event.answer()
-        uid = event.from_user.id
+        user_id = event.from_user.id
     else:
-        uid = event.from_user.id
+        user_id = event.from_user.id
         try:
             await event.delete()
         except Exception:
             pass
 
-    kb = build_site_keyboard(uid)
+    token = await get_or_create_web_token(user_id)
+    kb = build_site_keyboard(token)
 
     await show_screen(
         event,
         "Веб-интерфейс задач. Нажми кнопку ниже, чтобы открыть сайт.",
         reply_markup=kb,
     )
+
+
+@start_router.callback_query(F.data == "web:reset_token")
+async def cb_web_reset_token(query: CallbackQuery):
+    await query.answer()
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Да, сбросить",
+                    callback_data="web:reset_token:confirm",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Отмена",
+                    callback_data="cmd_site",
+                ),
+            ],
+        ]
+    )
+
+    await show_screen(
+        query,
+        (
+            "Точно сбросить веб-токен?\n"
+            "Старые ссылки перестанут работать, "
+            "нужно будет открыть сайт по новой ссылке."
+        ),
+        reply_markup=kb,
+    )
+
+
+@start_router.callback_query(F.data == "web:reset_token:confirm")
+async def cb_web_reset_token_confirm(query: CallbackQuery):
+    await query.answer()
+    user_id = query.from_user.id
+
+    new_token = await rotate_web_token(user_id)
+    kb = build_site_keyboard(new_token)
+
+    await show_screen(
+        query,
+        "Готово. Веб-токен сброшен. Используй новую ссылку ниже.",
+        reply_markup=kb,
+    )
+
 
 
 # ===== /time (+ callback cmd_time) — переустановка часового пояса =====

@@ -13,7 +13,7 @@
     </p>
 
     <form method="post" action="/tasks/add" class="form-vertical">
-      <input type="hidden" name="user_id" value="{{ user_id }}" />
+      <input type="hidden" name="token" value="{{ token }}" />
 
       <label class="field-label">
         Текст задачи
@@ -55,10 +55,10 @@
     <div class="tasks-toolbar">
       {% if delete_mode %}
         <span class="badge badge-red">Режим удаления</span>
-        <a href="/?user_id={{ user_id }}" class="btn btn-ghost">Выйти</a>
+        <a href="/?token={{ token }}" class="btn btn-ghost">Выйти</a>
       {% else %}
         <a
-          href="/?user_id={{ user_id }}&mode=delete"
+          href="/?token={{ token }}&mode=delete"
           class="btn btn-ghost"
         >Режим удаления</a>
       {% endif %}
@@ -73,7 +73,7 @@
             <div class="task-title-row">
               <span class="task-status-dot {% if t.is_done %}done{% endif %}"></span>
               <a
-                href="/tasks/{{ t.id }}?user_id={{ user_id }}"
+                href="/tasks/{{ t.id }}?token={{ token }}"
                 class="task-text-link"
               >
                 {{ t.text }}
@@ -88,14 +88,14 @@
           <div class="task-actions">
             {% if not delete_mode %}
               <form method="post" action="/tasks/{{ t.id }}/toggle">
-                <input type="hidden" name="user_id" value="{{ user_id }}" />
+                <input type="hidden" name="token" value="{{ token }}" />
                 <button type="submit" class="btn btn-small">
                   {% if t.is_done %}Вернуть в работу{% else %}Готово{% endif %}
                 </button>
               </form>
             {% endif %}
             <form method="post" action="/tasks/{{ t.id }}/delete">
-              <input type="hidden" name="user_id" value="{{ user_id }}" />
+              <input type="hidden" name="token" value="{{ token }}" />
               <button type="submit" class="btn btn-small btn-danger">
                 Удалить
               </button>

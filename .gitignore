@@ -10,6 +10,14 @@ data/
 *.db
 tasks.json
 
+# локальный Postgres
+pgdata/
+
+# локальные дампы/сессии
+todo_local_session.*
+*.sqlite
+*.sqlite3
+
 # python
 __pycache__/
 *.py[cod]
@@ -19,6 +27,10 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# pytest / mypy (если появятся)
+.pytest_cache/
+.mypy_cache/
 
 # macOS
 .DS_Store

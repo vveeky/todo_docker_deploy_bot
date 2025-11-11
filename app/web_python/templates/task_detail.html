@@ -13,7 +13,7 @@
       </p>
     </div>
     <div>
-      <a href="/?user_id={{ user_id }}" class="btn btn-ghost">
+      <a href="/?token={{ token }}" class="btn btn-ghost">
         ← К списку задач
       </a>
     </div>
@@ -42,7 +42,7 @@
       action="/tasks/{{ task.id }}/edit"
       class="form-vertical task-detail-form"
     >
-      <input type="hidden" name="user_id" value="{{ user_id }}" />
+      <input type="hidden" name="token" value="{{ token }}" />
 
       <label class="field-label">
         Текст задачи
@@ -74,7 +74,7 @@
         <button type="submit" class="btn btn-primary">
           Сохранить
         </button>
-        <a href="/?user_id={{ user_id }}" class="btn btn-ghost">
+        <a href="/?token={{ token }}" class="btn btn-ghost">
           Отмена
         </a>
       </div>
