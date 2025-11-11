@@ -7,7 +7,7 @@ from typing import List, Dict
 from aiogram import Bot
 
 from app.utils import storage
-from app.db.core import get_pool
+from app.utils import ui as ui_utils
 from app.utils.timezone import is_due_now
 
 logger = logging.getLogger(__name__)
