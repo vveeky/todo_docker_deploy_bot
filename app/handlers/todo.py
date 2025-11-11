@@ -368,6 +368,19 @@ def _dp_build_kb_year() -> InlineKeyboardMarkup:
     )
 
 
+def build_cancel_add_task_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Отменить добавление задачи",
+                    callback_data="cmd_add_cancel",
+                )
+            ]
+        ]
+    )
+
+
 async def _dp_show_screen(event: Union[Message, CallbackQuery], state: FSMContext) -> None:
     data = await state.get_data()
     stage = data.get("dp_stage", "day")
@@ -682,7 +695,20 @@ async def add_handler(event: Union[Message, CallbackQuery], state: FSMContext):
         event,
         "Создание новой задачи.\n"
         "Отправь текст задачи одним сообщением.",
+        reply_markup=build_cancel_add_task_kb(),
     )
+
+
+@todo_router.callback_query(F.data == "cmd_add_cancel")
+async def cb_add_cancel(query: CallbackQuery, state: FSMContext):
+    await query.answer()
+    await state.clear()
+    await render_tasks_screen(
+        query,
+        query.from_user.id,
+        page=0,
+    )
+
 
 
 @todo_router.message(StateFilter(TodoStates.add_text))
@@ -697,6 +723,7 @@ async def state_add_text(message: Message, state: FSMContext):
             message,
             "Текст задачи не может быть пустым.\n"
             "Отправь текст задачи одним сообщением.",
+            reply_markup=build_cancel_add_task_kb(),
         )
         return
 
