@@ -8,6 +8,7 @@ from app.handlers.start import start_router
 from app.handlers.todo import todo_router
 from app.services.notifier import notifier
 
+
 logger = logging.getLogger(__name__)
 
 

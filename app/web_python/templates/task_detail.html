@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Задача #{{ task.id }}{% endblock %}
+
+{% block content %}
+<section class="task-detail">
+  <h2>Задача #{{ task.id }}</h2>
+
+  <p><strong>Текст:</strong> {{ task.text }}</p>
+  <p><strong>Создано:</strong> {{ task.created_at_fmt }}</p>
+  <p><strong>Дедлайн:</strong> {{ task.due_at_fmt }}</p>
+
+  <form method="post" action="/tasks/{{ task.id }}/edit" class="task-detail-form">
+    <input type="hidden" name="user_id" value="{{ user_id }}" />
+
+    <label>
+      Новый текст
+      <input
+        type="text"
+        name="text"
+        value="{{ task.text }}"
+        autocomplete="off"
+      />
+    </label>
+
+    <label>
+      Дедлайн (YYYY-MM-DD HH:MM, локальное время)
+      <input
+        type="text"
+        name="due_at"
+        value="{{ due_input }}"
+        placeholder="2025-12-31 23:59"
+        autocomplete="off"
+      />
+    </label>
+
+    <div class="task-detail-actions">
+      <button type="submit">Сохранить</button>
+      <a href="/?user_id={{ user_id }}" class="link-button">К списку</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

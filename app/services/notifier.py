@@ -8,6 +8,7 @@ from aiogram import Bot
 
 from app.utils import storage
 from app.utils.dates import format_dt
+from app.utils.ui import show_notification
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,13 @@ async def notifier(bot: Bot, interval: int = 60) -> None:
 
             msg = f"Напоминание по задаче #{t['id']}: {text}\nВремя: {format_dt(due_at)}"
             try:
-                await bot.send_message(chat_id=user_id, text=msg)
+                # предполагаем, что бот используется в личке
+                await show_notification(
+                    bot=bot,
+                    chat_id=user_id,
+                    user_id=user_id,
+                    text=msg,
+                )
                 logger.info(
                     "Notifier: отправлено напоминание для user_id=%s, task_id=%s",
                     user_id,

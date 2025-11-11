@@ -14,6 +14,8 @@ from app.utils.ui import show_screen
 
 start_router = Router()
 
+PYTHON_BASE = "http://127.0.0.1:8001"
+
 
 def build_start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -30,13 +32,9 @@ def build_start_keyboard() -> InlineKeyboardMarkup:
 
 def build_help_keyboard() -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="/start", callback_data="cmd_start")],
-        [InlineKeyboardButton(text="/help", callback_data="cmd_help")],
-        [InlineKeyboardButton(text="/add", callback_data="cmd_add")],
-        [InlineKeyboardButton(text="/list", callback_data="cmd_list")],
-        [InlineKeyboardButton(text="/done", callback_data="cmd_done")],
-        [InlineKeyboardButton(text="/due", callback_data="cmd_due")],
-        [InlineKeyboardButton(text="/delete", callback_data="cmd_delete")],
+        [InlineKeyboardButton(text="добавить задачу", callback_data="cmd_add")],
+        [InlineKeyboardButton(text="список задач", callback_data="cmd_list")],
+        [InlineKeyboardButton(text="сайт (Python web)", callback_data="cmd_site")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -47,13 +45,7 @@ START_TEXT = (
 )
 
 HELP_TEXT = (
-    "Команды:\n"
-    "/add <текст> — добавить задачу\n"
-    "/list — список задач\n"
-    "/done <id> — пометить выполненной\n"
-    "/due <id> YYYY-MM-DD HH:MM — установить дедлайн\n"
-    "/delete <id> — удалить задачу\n\n"
-    "Можно также пользоваться кнопками."
+    "Команды:"
 )
 
 
@@ -63,6 +55,11 @@ async def start_cmd(event: Union[Message, CallbackQuery]):
     if isinstance(event, Message):
         try:
             await event.delete()  # убрать команду из чата
+        except Exception:
+            pass
+    else:
+        try:
+            await event.answer()
         except Exception:
             pass
     await show_screen(event, START_TEXT, reply_markup=build_start_keyboard())
@@ -76,4 +73,37 @@ async def help_cmd(event: Union[Message, CallbackQuery]):
             await event.delete()
         except Exception:
             pass
+    else:
+        try:
+            await event.answer()
+        except Exception:
+            pass
     await show_screen(event, HELP_TEXT, reply_markup=build_help_keyboard())
+
+
+@start_router.message(Command("site"))
+@start_router.callback_query(F.data == "cmd_site")
+async def cmd_site(message: Message):
+    uid = message.from_user.id
+
+    python_url = f"{PYTHON_BASE}/?user_id={uid}"
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Python web", url=python_url),
+                InlineKeyboardButton(text="Назад к боту", callback_data="cmd_help"),
+            ]
+        ]
+    )
+
+    try:
+            await message.delete()
+    except Exception:
+            pass
+
+    await show_screen(
+            message,
+            "Открой веб (только если запущен локально по 8001 порту):",
+            reply_markup=kb,
+        )

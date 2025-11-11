@@ -4,60 +4,89 @@ from typing import List, Dict
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 DEFAULT_PER_PAGE = 5
-PREVIEW_WORDS = 6
-
-
-def _preview(text: str, words: int = PREVIEW_WORDS) -> str:
-    parts = text.strip().split()
-    if len(parts) <= words:
-        return text
-    return " ".join(parts[:words]) + "…"
 
 
 def tasks_page_keyboard(
-    tasks: List[Dict], page: int = 0, per_page: int = DEFAULT_PER_PAGE
+    tasks_sorted: List[Dict],
+    page: int,
+    per_page: int = DEFAULT_PER_PAGE,
 ) -> InlineKeyboardMarkup:
-    total = len(tasks)
-    if total == 0:
-        return InlineKeyboardMarkup(inline_keyboard=[])
+    """
+    Строит клавиатуру для списка задач:
+    - нумерация задач в UI: 1..N по позиции в общем отсортированном списке;
+    - колбэки используют реальные внутренние id задач;
+    - есть навигация по страницам;
+    - есть кнопка "Режим удаления";
+    - есть кнопка "Команды" (cmd_help).
+    """
+    total = len(tasks_sorted)
+    if per_page <= 0:
+        per_page = DEFAULT_PER_PAGE
 
-    total_pages = (total + per_page - 1) // per_page
-    if page < 0:
-        page = 0
-    if page > total_pages - 1:
-        page = total_pages - 1
-
-    start = page * per_page
-    end = start + per_page
-    page_items = tasks[start:end]
+    # диапазон задач для текущей страницы
+    start_index = page * per_page
+    end_index = min(start_index + per_page, total)
 
     rows: List[List[InlineKeyboardButton]] = []
 
-    for t in page_items:
-        tid = t.get("id")
-        label = f"{tid}. {_preview(t.get('text', ''))}"
+    # задачи текущей страницы
+    for visible_index, task in enumerate(
+        tasks_sorted[start_index:end_index],
+        start=start_index + 1,  # глобальная нумерация 1..N
+    ):
+        tid = task.get("id")
+        text = task.get("text", "") or ""
+        mark = "✅" if task.get("is_done") else "✳️"
+        label = f"{visible_index}. {mark} {text[:40]}"
+
         rows.append(
-            [InlineKeyboardButton(text=label, callback_data=f"task:show:{tid}")]
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=f"task:show:{tid}",
+                )
+            ]
         )
 
-    prev_cb = f"tasks:page:{page - 1}" if page > 0 else "noop"
-    next_cb = f"tasks:page:{page + 1}" if page < total_pages - 1 else "noop"
-    prev_text = "⬅️" if page > 0 else " "
-    next_text = "➡️" if page < total_pages - 1 else " "
-    center_text = f"{page + 1}/{total_pages}"
+    # навигация по страницам
+    nav_row: List[InlineKeyboardButton] = []
 
+    if page > 0:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=f"tasks:page:{page - 1}",
+            )
+        )
+
+    if end_index < total:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="Вперёд ➡️",
+                callback_data=f"tasks:page:{page + 1}",
+            )
+        )
+
+    if nav_row:
+        rows.append(nav_row)
+
+    # режим удаления
     rows.append(
         [
-            InlineKeyboardButton(text=prev_text, callback_data=prev_cb),
-            InlineKeyboardButton(text=center_text, callback_data=f"tasks:page:{page}"),
-            InlineKeyboardButton(text=next_text, callback_data=next_cb),
+            InlineKeyboardButton(
+                text="Режим удаления",
+                callback_data="tasks:delete_mode",
+            )
         ]
     )
 
+    # выход к командам (существующий колбэк cmd_help)
     rows.append(
         [
-            InlineKeyboardButton(text="Отложить до…", callback_data="tasks:postpone_prompt"),
-            InlineKeyboardButton(text="Режим удаления", callback_data="tasks:delete_mode"),
+            InlineKeyboardButton(
+                text="Назад к командам",
+                callback_data="cmd_help",
+            )
         ]
     )
 

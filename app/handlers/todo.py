@@ -444,10 +444,11 @@ async def render_task_card(
     created_str = format_dt(task.get("created_at"))
 
     text = (
-        f"#{task['id']} — {task['text']}\n"
-        f"Статус: {'✅' if task.get('is_done') else '✳️'}\n"
-        f"Дедлайн: {task.get('due_at') or '—'}\n"
-        f"Создано: {task.get('created_at')}"
+        f"Задача #{task['id']}\n"
+        f"Текст: {task['text']}\n"
+        f"Статус: {'✅ выполнена' if task.get('is_done') else '✳️ в работе'}\n"
+        f"Дедлайн: {due_str}\n"
+        f"Создано: {created_str}"
     )
     if prefix:
         text = prefix + "\n\n" + text
@@ -485,6 +486,7 @@ async def render_task_card(
     await show_screen(event, text, reply_markup=kb)
 
 
+
 # --------- /list + пагинация ---------
 
 @todo_router.message(Command("list"))
@@ -499,6 +501,11 @@ async def list_handler(event: Union[Message, CallbackQuery]):
         user_id = event.from_user.id
         page = 0
     else:
+        try:
+            await event.answer()
+        except Exception:
+            pass
+
         user_id = event.from_user.id
         data = event.data or ""
         page = 0
@@ -509,6 +516,7 @@ async def list_handler(event: Union[Message, CallbackQuery]):
                 page = 0
 
     await render_tasks_screen(event, user_id, page=page)
+
 
 
 # --------- /add ---------
@@ -977,10 +985,10 @@ async def cb_tasks_delete_mode(query: CallbackQuery):
         tasks, key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
     )
     rows: List[List[InlineKeyboardButton]] = []
-    for t in tasks_sorted:
+    for idx, t in enumerate(tasks_sorted, start=1):
         tid = t.get("id")
         text = t.get("text", "")
-        label = f"{tid}. {text[:40]}"
+        label = f"{idx}. {text[:40]}"
         rows.append(
             [
                 InlineKeyboardButton(
@@ -989,6 +997,7 @@ async def cb_tasks_delete_mode(query: CallbackQuery):
                 )
             ]
         )
+
 
     rows.append(
         [InlineKeyboardButton(text="Назад к списку", callback_data="cmd_list")]
@@ -1065,16 +1074,6 @@ async def state_receive_postpone_date(message: Message, state: FSMContext):
 async def cb_noop(query: CallbackQuery):
     await query.answer()
 
-
-# --------- catch-all: удалять любой текст ---------
-
-@todo_router.message()
-async def trash_any_text(message: Message):
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
 # ------- CALENDAR ---------
 
 @todo_router.callback_query(
@@ -1083,10 +1082,13 @@ async def trash_any_text(message: Message):
 )
 async def dp_callback(query: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    parts = query.data.split(":")
+    parts = (query.data or "").split(":")
 
     if len(parts) < 2:
-        await query.answer()
+        try:
+            await query.answer()
+        except Exception:
+            pass
         return
 
     kind = parts[1]
@@ -1102,14 +1104,22 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
 
         if field == "day":
             data["dp_day"] = value
+            msg = "День выбран."
         elif field == "month":
             data["dp_month"] = value
+            msg = "Месяц выбран."
         elif field == "hour":
             data["dp_hour"] = value
+            msg = "Час выбран."
         elif field == "minute":
             data["dp_minute"] = value
+            msg = "Минуты выбраны."
+        else:
+            await query.answer("Неизвестное поле.", show_alert=True)
+            return
 
         await state.set_data(data)
+        await query.answer(msg)
         await _dp_show_screen(query, state)
         return
 
@@ -1117,10 +1127,12 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
     if kind == "stage" and len(parts) == 3:
         target = parts[2]
         if target not in {"day", "month", "hour", "minute", "year"}:
-            await query.answer()
+            await query.answer("Неизвестный шаг.", show_alert=True)
             return
+
         data["dp_stage"] = target
         await state.set_data(data)
+        await query.answer(f"Шаг: {_dp_stage_label(target)}")
         await _dp_show_screen(query, state)
         return
 
@@ -1129,6 +1141,7 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
         mode = data.get("dp_mode")
         if mode != "due":
             await state.clear()
+            await query.answer("Контекст выбора даты потерян.", show_alert=True)
             await show_screen(query, "Контекст выбора даты потерян.")
             return
 
@@ -1141,6 +1154,7 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
         task_id = data.get("dp_task_id")
         if not isinstance(task_id, int):
             await state.clear()
+            await query.answer("Контекст задачи потерян.", show_alert=True)
             await show_screen(query, "Контекст задачи потерян.")
             return
 
@@ -1150,17 +1164,20 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
 
         if ok:
             task = await storage.get_task(task_id, query.from_user.id)
+            await query.answer("Дедлайн сохранён.")
             if task:
                 prefix = f"Дедлайн установлен: {format_dt(task.get('due_at'))}"
                 await render_task_card(query, task, prefix=prefix)
                 return
             await show_screen(query, "Дедлайн сохранён, но задача не найдена.")
         else:
+            await query.answer("Не удалось сохранить дедлайн.", show_alert=True)
             await show_screen(query, "Не удалось сохранить дедлайн.")
 
         return
 
-    await query.answer()
+    await query.answer("Неизвестное действие.", show_alert=True)
+
 
 @todo_router.message(StateFilter(DatePickerState.picking))
 async def dp_year_input(message: Message, state: FSMContext):
@@ -1214,3 +1231,13 @@ async def dp_year_input(message: Message, state: FSMContext):
         pass
 
     await _dp_show_screen(message, state)
+
+
+# --------- catch-all: удалять любой текст ---------
+
+@todo_router.message()
+async def trash_any_text(message: Message):
+    try:
+        await message.delete()
+    except Exception:
+        pass

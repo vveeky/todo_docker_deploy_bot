@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Мои задачи{% endblock %}
+
+{% block content %}
+<section class="add-form">
+  <form method="post" action="/tasks/add">
+    <input type="hidden" name="user_id" value="{{ user_id }}" />
+    <input
+      type="text"
+      name="text"
+      placeholder="Новая задача"
+      required
+      autocomplete="off"
+    />
+    <button type="submit">Добавить</button>
+  </form>
+</section>
+
+<section class="tasks">
+  <div class="tasks-toolbar">
+    {% if delete_mode %}
+      <span>Режим удаления включён</span>
+      <a href="/?user_id={{ user_id }}" class="link-button">Выйти</a>
+    {% else %}
+      <a href="/?user_id={{ user_id }}&mode=delete" class="link-button">Режим удаления</a>
+    {% endif %}
+  </div>
+
+  {% if tasks %}
+    <ul>
+      {% for t in tasks %}
+        <li class="task {% if t.is_done %}task-done{% endif %}">
+          <div class="task-main">
+            <span class="task-text">
+              <a href="/tasks/{{ t.id }}?user_id={{ user_id }}">
+                {{ t.text }}
+              </a>
+            </span>
+            <span class="task-meta">
+              Создано: {{ t.created_at_fmt }} |
+              Дедлайн: {{ t.due_at_fmt }}
+            </span>
+          </div>
+          <div class="task-actions">
+            {% if not delete_mode %}
+              <form method="post" action="/tasks/{{ t.id }}/toggle">
+                <input type="hidden" name="user_id" value="{{ user_id }}" />
+                <button type="submit">
+                  {% if t.is_done %}Вернуть в работу{% else %}Готово{% endif %}
+                </button>
+              </form>
+            {% endif %}
+            <form method="post" action="/tasks/{{ t.id }}/delete">
+              <input type="hidden" name="user_id" value="{{ user_id }}" />
+              <button type="submit" class="danger">Удалить</button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Пока нет задач. Добавь первую сверху.</p>
+  {% endif %}
+</section>
+{% endblock %}

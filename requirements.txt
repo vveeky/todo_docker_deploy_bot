@@ -2,3 +2,9 @@ aiogram==3.22.0
 aiofiles
 python-dotenv
 environs
+# fastapi
+fastapi
+uvicorn[standard]
+pydantic>=2
+jinja2
+python-multipart
