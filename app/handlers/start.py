@@ -150,7 +150,6 @@ async def start_cmd(
             "Минуты должны совпадать с минутами, показанными выше."
         )
 
-        # Отправляем отдельное сообщение, которое не будет редактироваться
         msg = event.message if isinstance(event, CallbackQuery) else event
         await msg.answer(text)
 
@@ -159,11 +158,12 @@ async def start_cmd(
     # 3. обычный стартовый экран
     if isinstance(event, Message):
         try:
-            await event.delete()  # убрать команду из чата
+            await event.delete()  # убрать /start из чата
         except Exception:
             pass
 
     await show_screen(event, START_TEXT, reply_markup=build_start_keyboard())
+
 
 
 

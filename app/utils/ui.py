@@ -23,19 +23,31 @@ async def _resolve_chat_user(
 
 
 async def show_screen(
-    event: Union[Message, CallbackQuery],
+    event: Message | CallbackQuery,
     text: str,
-    reply_markup: Optional[InlineKeyboardMarkup] = None,
+    reply_markup=None,
 ) -> None:
     """
-    Единый UI-экран:
-    - message_id хранится в Postgres (ui_state);
-    - пытаемся редактировать, если не вышло — удаляем и создаём новый;
-    - новый message_id пишем в ui_state.
+    Универсальный экран бота.
+    Логика:
+      - если есть сохранённый message_id в ui_state -> пытаемся отредактировать его;
+      - если редактирование не удалось или id нет -> отправляем новое сообщение и сохраняем id.
     """
-    bot, chat_id, user_id = await _resolve_chat_user(event)
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        message = event.message
+        bot: Bot = event.message.bot
+        chat_id = message.chat.id
+        user_id = event.from_user.id
+    else:
+        message = event
+        bot: Bot = event.bot
+        chat_id = message.chat.id
+        user_id = message.from_user.id
+
     msg_id = await storage.get_ui_message_id(chat_id, user_id)
 
+    # Пытаемся отредактировать существующий экран
     if msg_id is not None:
         try:
             await bot.edit_message_text(
@@ -46,21 +58,29 @@ async def show_screen(
             )
             return
         except TelegramBadRequest:
-            # пробуем удалить и потом создать новое
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except TelegramBadRequest:
-                pass
-            except Exception:
-                pass
+            # сообщение не найдено / не редактируемо -> считаем, что id устарел
+            msg_id = None
         except Exception:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                pass
+            # чтобы не ломать бота из-за экрана, просто сбросим id и отправим новый
+            msg_id = None
 
-    sent = await bot.send_message(chat_id, text, reply_markup=reply_markup)
-    await storage.set_ui_message_id(chat_id, user_id, sent.message_id)
+    # Если нет валидного message_id -> отправляем новый экран и запоминаем его
+    try:
+        sent = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=reply_markup,
+        )
+    except Exception:
+        # если даже отправка экрана не удалась, дальше делать нечего
+        return
+
+    try:
+        await storage.save_ui_message_id(chat_id, user_id, sent.message_id)
+    except Exception:
+        # если не смогли сохранить id, просто живём без него
+        pass
+
 
 
 async def show_notification(
@@ -70,10 +90,10 @@ async def show_notification(
     text: str,
 ) -> None:
     """
-    Уведомление для notifier:
-    - пытается перезаписать текущий UI-экран (если есть);
-    - если не получается, отправляет отдельное сообщение;
-    - ui_state не трогаем, чтобы следующий show_screen продолжал редактировать тот же экран.
+    Уведомление от нотифаера:
+      - сначала пытается отредактировать текущий UI-экран (если есть);
+      - если не получилось, просто отправляет отдельное сообщение;
+      - ui_state НЕ трогаем (message_id для главного экрана не сбрасываем).
     """
     msg_id = await storage.get_ui_message_id(chat_id, user_id)
 
@@ -86,10 +106,9 @@ async def show_notification(
             )
             return
         except TelegramBadRequest:
-            # не получилось отредактировать — просто отправим новое сообщение
+            # экран исчез или не редактируется — просто отправим новое уведомление
             pass
         except Exception:
-            # любые другие ошибки уведомления игнорируем
             pass
 
     try:
