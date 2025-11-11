@@ -119,7 +119,7 @@ def _dp_text(data: dict) -> str:
 
     def line(field: str, label: str, value: str) -> str:
         if stage == field:
-            return f"{label}: {value} ⬅️"
+            return f"🔛 {label}: {value}"
         return f"{label}: {value}"
 
     lines = [
@@ -127,7 +127,7 @@ def _dp_text(data: dict) -> str:
         line("month", "Месяц", _dp_month_name(month)),
         line("day", "День", str(day)),
         line("hour", "Час", f"{hour:02d}"),
-        line("minute", "Минута", f"{minute:02d}"),
+        line("minute", "Минуты", f"{minute:02d}"),
     ]
 
     return (
