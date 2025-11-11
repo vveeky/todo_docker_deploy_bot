@@ -28,17 +28,25 @@ async def init_db_and_schema() -> None:
     logger.info("Postgres pool создан")
 
     async with _pool.acquire() as conn:
-        # таблица состояний задач
+        # таблица задач + состояния
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS task_state (
-                user_id    BIGINT NOT NULL,
-                task_id    INTEGER NOT NULL,
-                is_done    BOOLEAN NOT NULL DEFAULT FALSE,
+                user_id   BIGINT    NOT NULL,
+                task_id   INTEGER   NOT NULL,
+                is_done   BOOLEAN   NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                due_at     TIMESTAMPTZ,
+                due_at    TIMESTAMPTZ,
                 PRIMARY KEY (user_id, task_id)
             );
+            """
+        )
+
+        # гарантируем наличие столбца text для хранения текста задачи
+        await conn.execute(
+            """
+            ALTER TABLE task_state
+            ADD COLUMN IF NOT EXISTS text TEXT NOT NULL DEFAULT '';
             """
         )
 
@@ -54,11 +62,11 @@ async def init_db_and_schema() -> None:
             """
         )
 
-        # таблица часовых поясов пользователей
+        # таблица настроек пользователей (часовой пояс + веб-токен)
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_settings (
-                user_id BIGINT PRIMARY KEY,
+                user_id          BIGINT PRIMARY KEY,
                 tz_offset_minutes INTEGER NOT NULL DEFAULT 0
             );
             """
@@ -87,6 +95,7 @@ async def close_db() -> None:
         await _pool.close()
         _pool = None
 
+
 async def get_user_tz_offset(user_id: int) -> Optional[int]:
     """
     Возвращает смещение в минутах или None, если пользователь ещё не настраивал время.
@@ -113,17 +122,18 @@ async def set_user_tz_offset(user_id: int, offset_minutes: int) -> None:
             INSERT INTO user_settings (user_id, tz_offset_minutes)
             VALUES ($1, $2)
             ON CONFLICT (user_id) DO UPDATE
-              SET tz_offset_minutes = EXCLUDED.tz_offset_minutes
+            SET tz_offset_minutes = EXCLUDED.tz_offset_minutes
             """,
             user_id,
             offset_minutes,
         )
 
+
 WEB_TOKEN_BYTES = 32  # минимум 32 байта энтропии
 
 
 def _generate_web_token() -> str:
-    # URL-safe base64,entropy >= 32 bytes
+    # URL-safe base64, энтропия >= 32 bytes
     return secrets.token_urlsafe(WEB_TOKEN_BYTES)
 
 
@@ -131,8 +141,8 @@ async def get_or_create_web_token(user_id: int) -> str:
     """
     Вернёт существующий web_token пользователя или создаст новый.
     """
-    global _pool  # или как у тебя называется пул
-    async with _pool.acquire() as conn:
+    global _pool
+    async with _pool.acquire() as conn:  # type: ignore[union-attr]
         row = await conn.fetchrow(
             "SELECT web_token FROM user_settings WHERE user_id = $1",
             user_id,
@@ -161,7 +171,7 @@ async def rotate_web_token(user_id: int) -> str:
     """
     global _pool
     token = _generate_web_token()
-    async with _pool.acquire() as conn:
+    async with _pool.acquire() as conn:  # type: ignore[union-attr]
         await conn.execute(
             """
             UPDATE user_settings
@@ -183,7 +193,7 @@ async def get_user_id_by_token(token: str) -> Optional[int]:
         return None
 
     global _pool
-    async with _pool.acquire() as conn:
+    async with _pool.acquire() as conn:  # type: ignore[union-attr]
         row = await conn.fetchrow(
             "SELECT user_id FROM user_settings WHERE web_token = $1",
             token,
