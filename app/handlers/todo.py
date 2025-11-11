@@ -1,5 +1,5 @@
 # app/handlers/todo.py
-from typing import Union, List
+from typing import Optional, Union, List
 import datetime as dt
 import calendar
 import os
