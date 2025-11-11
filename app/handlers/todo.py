@@ -659,12 +659,9 @@ async def state_add_text(message: Message, state: FSMContext):
     except Exception:
         pass
 
-    await render_tasks_screen(
-        message,
-        message.from_user.id,
-        page=0,
-        prefix=f"Задача добавлена: #{task['id']} — {task['text']}",
-    )
+    # вместо списка сразу запускаем выбор дедлайна
+    await _dp_start_for_task(message, state, task)
+
 
 
 

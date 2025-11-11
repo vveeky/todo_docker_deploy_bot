@@ -65,6 +65,7 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
                             user_id=user_id,
                             text=message_text,
                         )
+                        logger.info("Notifier: уведомление отправлено user=%s task=%s", user_id, task_id)
                     except Exception:
                         logger.exception(
                             "Notifier: не удалось отправить уведомление user=%s task=%s",
@@ -75,14 +76,21 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
                         continue
 
                     # сбрасываем дедлайн, чтобы не дублировать уведомление
+                                        # 4) сбрасываем дедлайн и очищаем ui_state ОДИН раз
                     try:
                         await storage.clear_task_due(user_id, task_id)
+                        # чат приватный, chat_id = user_id
+                        await storage.delete_ui_message_id(
+                            chat_id=user_id,
+                            user_id=user_id,
+                        )
                     except Exception:
                         logger.exception(
-                            "Notifier: ошибка при сбросе дедлайна user=%s task=%s",
+                            "Notifier: ошибка при сбросе дедлайна или очистке ui_state user=%s task=%s",
                             user_id,
                             task_id,
                         )
+
 
                 await asyncio.sleep(interval_seconds)
 
