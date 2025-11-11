@@ -283,3 +283,55 @@ async def clear_task_due(user_id: int, task_id: int) -> None:
     Сбрасывает дедлайн у задачи.
     """
     await update_task(task_id, user_id, due_at=None)
+async def get_ui_message_id(chat_id: int, user_id: int) -> Optional[int]:
+    """
+    Возвращает message_id последнего экранного сообщения для пары (user_id, chat_id),
+    либо None, если его ещё нет.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT message_id
+            FROM ui_state
+            WHERE user_id = $1 AND chat_id = $2
+            """,
+            user_id,
+            chat_id,
+        )
+    return int(row["message_id"]) if row else None
+
+
+async def save_ui_message_id(chat_id: int, user_id: int, message_id: int) -> None:
+    """
+    Сохраняет/обновляет message_id экранного сообщения для (user_id, chat_id).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO ui_state (user_id, chat_id, message_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, chat_id) DO UPDATE
+            SET message_id = EXCLUDED.message_id
+            """,
+            user_id,
+            chat_id,
+            message_id,
+        )
+
+
+async def delete_ui_message_id(chat_id: int, user_id: int) -> None:
+    """
+    Удаляет запись об экранном сообщении (если понадобится явно чистить).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            DELETE FROM ui_state
+            WHERE user_id = $1 AND chat_id = $2
+            """,
+            user_id,
+            chat_id,
+        )
