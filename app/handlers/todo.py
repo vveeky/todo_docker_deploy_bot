@@ -18,7 +18,7 @@ from app.utils import storage
 from app.keyboards.tasks_kb import tasks_page_keyboard, DEFAULT_PER_PAGE
 from app.states.todo_states import TodoStates
 from app.states.date_picker import DatePickerState
-from app.utils.ui import show_screen
+from app.utils.ui import show_notification, show_screen
 from app.utils.dates import format_dt
 from app.db.core import get_or_create_web_token, get_user_tz_offset
 
@@ -1107,6 +1107,9 @@ async def cb_task_do_delete(query: CallbackQuery):
         await show_screen(query, "Некорректный id задачи.")
         return
 
+    user_id = query.from_user.id
+    chat_id = query.message.chat.id
+
     # считаем номер в списке ДО удаления
     tasks = await storage.list_user_tasks(query.from_user.id)
     tasks_sorted = sorted(
@@ -1126,8 +1129,28 @@ async def cb_task_do_delete(query: CallbackQuery):
     if ok is False:
         await show_screen(query, "Не удалось удалить задачу.")
         return
+    
+    # 1) отдельное уведомление "Задача №N удалена"
+    await show_notification(
+        bot=query.message.bot,
+        chat_id=chat_id,
+        user_id=user_id,
+        text=f"Задача №{display_num} удалена.",
+    )
 
-    await show_screen(query, f"Задача №{display_num} удалена.")
+    # 2) очищаем ui_state, чтобы следующий экран был НОВЫМ сообщением
+    try:
+        await storage.delete_ui_message_id(chat_id=chat_id, user_id=user_id)
+    except Exception:
+        # если не получилось — не критично, просто останется старый id
+        pass
+
+    # 3) показываем список задач, его message_id сохранится как актуальный экран
+    await render_tasks_screen(
+        query,
+        user_id,
+        page=0,
+    )
 
 
 
