@@ -7,8 +7,6 @@ from typing import List, Dict
 from aiogram import Bot
 
 from app.utils import storage
-from app.utils import ui as ui_utils
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.db.core import get_pool
 from app.utils.timezone import is_due_now
 
@@ -45,8 +43,6 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
                         len(due_tasks),
                     )
 
-                pool = await get_pool()
-
                 for t in due_tasks:
                     user_id = int(t["user_id"])
                     task_id = int(t["id"])
@@ -57,41 +53,35 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
                     if not await is_due_now(user_id, due_at, now=now):
                         continue
 
-                    # 1) забываем ui_state, чтобы НЕ редактировать старый UI
-                    try:
-                        async with pool.acquire() as conn:
-                            await conn.execute(
-                                "DELETE FROM ui_state WHERE user_id = $1",
-                                user_id,
-                            )
-                    except Exception:
-                        logger.exception("Notifier: ошибка очистки ui_state user=%s", user_id)
-
-                    # 3) отправляем НОВОЕ сообщение (message_id не сохраняем)
                     message_text = f"⏰ Напоминание: задача №{task_id}\n{text}"
                     if due_at:
                         message_text += f"\nДедлайн: {due_at}"
 
+                    # отправляем уведомление, не трогая ui_state
                     try:
-                        await bot.send_message(
+                        await ui_utils.show_notification(
+                            bot=bot,
                             chat_id=user_id,
+                            user_id=user_id,
                             text=message_text,
                         )
                     except Exception:
                         logger.exception(
                             "Notifier: не удалось отправить уведомление user=%s task=%s",
-                            user_id, task_id,
+                            user_id,
+                            task_id,
                         )
                         # не сбрасываем due, попробуем позже
                         continue
 
-                    # 4) сбрасываем дедлайн, чтобы не дублировать уведомление
+                    # сбрасываем дедлайн, чтобы не дублировать уведомление
                     try:
                         await storage.clear_task_due(user_id, task_id)
                     except Exception:
                         logger.exception(
                             "Notifier: ошибка при сбросе дедлайна user=%s task=%s",
-                            user_id, task_id,
+                            user_id,
+                            task_id,
                         )
 
                 await asyncio.sleep(interval_seconds)

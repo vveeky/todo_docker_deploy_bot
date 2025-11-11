@@ -71,16 +71,13 @@ async def show_notification(
 ) -> None:
     """
     Уведомление для notifier:
-    - пытается перезаписать текущий UI-экран;
-    - если не получается, удаляет его и отправляет новое сообщение;
-    - после этого очищает ui_state, чтобы следующий show_screen создал новый экран.
+    - пытается перезаписать текущий UI-экран (если есть);
+    - если не получается, отправляет отдельное сообщение;
+    - ui_state не трогаем, чтобы следующий show_screen продолжал редактировать тот же экран.
     """
     msg_id = await storage.get_ui_message_id(chat_id, user_id)
 
     if msg_id is not None:
-        # больше не считаем это UI-сообщением
-        await storage.clear_ui_message_id(chat_id, user_id)
-
         try:
             await bot.edit_message_text(
                 chat_id=chat_id,
@@ -89,19 +86,14 @@ async def show_notification(
             )
             return
         except TelegramBadRequest:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                pass
+            # не получилось отредактировать — просто отправим новое сообщение
+            pass
         except Exception:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                pass
-    else:
-        await storage.clear_ui_message_id(chat_id, user_id)
+            # любые другие ошибки уведомления игнорируем
+            pass
 
     try:
         await bot.send_message(chat_id=chat_id, text=text)
     except Exception:
+        # уведомление не критично — глушим ошибку
         pass
