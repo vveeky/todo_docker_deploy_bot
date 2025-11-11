@@ -119,7 +119,7 @@ def _dp_text(data: dict) -> str:
 
     def line(field: str, label: str, value: str) -> str:
         if stage == field:
-            return f"Вы меняете {label}: текущий — {value}"
+            return f"{label}: {value} ⬅️"
         return f"{label}: {value}"
 
     lines = [
