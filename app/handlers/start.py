@@ -1,5 +1,7 @@
 # app/handlers/start.py
 from typing import Union
+import os
+import datetime as dt
 
 from aiogram import Router, F
 from aiogram.types import (
@@ -9,20 +11,46 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 
 from app.utils.ui import show_screen
+from app.states.time_settings import TimeSettingsStates
+from app.db.core import get_user_tz_offset, set_user_tz_offset
 
 start_router = Router()
 
-PYTHON_BASE = "http://127.0.0.1:8001"
+# Базовый URL веб-сайта:
+# локально по умолчанию http://127.0.0.1:8001
+# на сервере можно переопределить через .env / переменную окружения PYTHON_BASE
+PYTHON_BASE = os.getenv("PYTHON_BASE", "http://127.0.0.1:8001")
 
+
+# ===== ТЕКСТЫ =====
+
+START_TEXT = (
+    "Привет! Я бот для управления задачами.\n\n"
+    "Жми «/help — список команд» или используй кнопки ниже."
+)
+
+HELP_TEXT = (
+    "Это TODO-бот.\n\n"
+    "Основные действия:\n"
+    "• ➕ Добавить задачу\n"
+    "• 📋 Показать список задач\n"
+    "• 🌐 Открыть веб-интерфейс\n"
+    "• 🕒 Настроить время\n\n"
+    "Используй кнопки ниже."
+)
+
+
+# ===== КЛАВИАТУРЫ =====
 
 def build_start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="/help — список команд",
+                    text="список команд",
                     callback_data="cmd_help",
                 )
             ]
@@ -31,39 +59,99 @@ def build_start_keyboard() -> InlineKeyboardMarkup:
 
 
 def build_help_keyboard() -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text="добавить задачу", callback_data="cmd_add")],
-        [InlineKeyboardButton(text="список задач", callback_data="cmd_list")],
-        [InlineKeyboardButton(text="сайт (Python web)", callback_data="cmd_site")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Добавить задачу",
+                    callback_data="cmd_add",
+                ),
+                InlineKeyboardButton(
+                    text="📋 Список задач",
+                    callback_data="cmd_list",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🌐 Открыть сайт",
+                    callback_data="cmd_site",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🕒 Настроить время",
+                    callback_data="cmd_time",
+                ),
+            ],
+        ]
+    )
 
 
-START_TEXT = (
-    "Привет! Я бот для управления задачами.\n"
-    "Отправь /help или нажми кнопку."
-)
+def build_site_keyboard(uid: int) -> InlineKeyboardMarkup:
+    python_url = f"{PYTHON_BASE}/?user_id={uid}"
 
-HELP_TEXT = (
-    "Команды:"
-)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Открыть сайт 🌐",
+                    url=python_url,
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад к командам",
+                    callback_data="cmd_help",
+                ),
+            ],
+        ]
+    )
 
+
+# ===== /start (+ callback cmd_start) =====
 
 @start_router.message(Command("start"))
 @start_router.callback_query(F.data == "cmd_start")
-async def start_cmd(event: Union[Message, CallbackQuery]):
+async def start_cmd(
+    event: Union[Message, CallbackQuery],
+    state: FSMContext,
+):
+    # 1. user_id из Message или CallbackQuery
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        user_id = event.from_user.id
+    else:
+        user_id = event.from_user.id
+
+    # 2. проверяем, настроен ли часовой пояс
+    offset = await get_user_tz_offset(user_id)
+    if offset is None:
+        now = dt.datetime.now()
+        server_time_str = now.strftime("%H:%M")
+
+        await state.set_state(TimeSettingsStates.waiting_for_time)
+        await show_screen(
+            event,
+            (
+                "Перед началом работы нужно настроить время.\n\n"
+                f"Сейчас на сервере: {server_time_str}.\n\n"
+                "Напиши, сколько у тебя сейчас времени, в формате HH:MM.\n"
+                "Минуты должны совпадать с минутами, показанными выше."
+            ),
+        )
+        return
+
+    # 3. обычный стартовый экран
     if isinstance(event, Message):
         try:
             await event.delete()  # убрать команду из чата
         except Exception:
             pass
-    else:
-        try:
-            await event.answer()
-        except Exception:
-            pass
+
     await show_screen(event, START_TEXT, reply_markup=build_start_keyboard())
 
+
+# ===== /help (+ callback cmd_help) =====
 
 @start_router.message(Command("help"))
 @start_router.callback_query(F.data == "cmd_help")
@@ -78,32 +166,123 @@ async def help_cmd(event: Union[Message, CallbackQuery]):
             await event.answer()
         except Exception:
             pass
+
     await show_screen(event, HELP_TEXT, reply_markup=build_help_keyboard())
 
 
+# ===== /site (+ callback cmd_site) =====
+
 @start_router.message(Command("site"))
 @start_router.callback_query(F.data == "cmd_site")
-async def cmd_site(message: Message):
-    uid = message.from_user.id
-
-    python_url = f"{PYTHON_BASE}/?user_id={uid}"
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Python web", url=python_url),
-                InlineKeyboardButton(text="Назад к боту", callback_data="cmd_help"),
-            ]
-        ]
-    )
-
-    try:
-            await message.delete()
-    except Exception:
+async def cmd_site(event: Union[Message, CallbackQuery]):
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        uid = event.from_user.id
+    else:
+        uid = event.from_user.id
+        try:
+            await event.delete()
+        except Exception:
             pass
 
+    kb = build_site_keyboard(uid)
+
     await show_screen(
+        event,
+        "Веб-интерфейс задач. Нажми кнопку ниже, чтобы открыть сайт.",
+        reply_markup=kb,
+    )
+
+
+# ===== /time (+ callback cmd_time) — переустановка часового пояса =====
+
+@start_router.message(Command("time"))
+@start_router.callback_query(F.data == "cmd_time")
+async def cmd_time(event: Union[Message, CallbackQuery], state: FSMContext):
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+
+    now = dt.datetime.now()
+    server_time_str = now.strftime("%H:%M")
+
+    await state.set_state(TimeSettingsStates.waiting_for_time)
+    await show_screen(
+        event,
+        (
+            "Перенастроим время.\n\n"
+            f"Сейчас на сервере: {server_time_str}.\n\n"
+            "Напиши, сколько у тебя сейчас времени, в формате HH:MM.\n"
+            "Минуты должны совпадать."
+        ),
+    )
+
+
+# ===== обработка ввода времени в формате HH:MM =====
+
+@start_router.message(TimeSettingsStates.waiting_for_time)
+async def tz_handle_time_input(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    # парсим HH:MM
+    try:
+        parts = text.split(":")
+        if len(parts) != 2:
+            raise ValueError
+        user_h = int(parts[0])
+        user_m = int(parts[1])
+        if not (0 <= user_h <= 23 and 0 <= user_m <= 59):
+            raise ValueError
+    except ValueError:
+        await show_screen(
             message,
-            "Открой веб (только если запущен локально по 8001 порту):",
-            reply_markup=kb,
+            "Введи время в формате HH:MM, например 09:30.",
         )
+        return
+
+    # текущее время на сервере
+    now = dt.datetime.now()
+    server_h = now.hour
+    server_m = now.minute
+
+    # минуты должны совпадать
+    if user_m != server_m:
+        server_time_str = now.strftime("%H:%M")
+        await show_screen(
+            message,
+            (
+                "Минуты должны совпадать с серверными.\n"
+                f"Сейчас на сервере: {server_time_str}.\n"
+                "Введи своё время так, чтобы минуты были такими же."
+            ),
+        )
+        return
+
+    # считаем разницу (server - user) в минутах, с учётом перехода через полночь
+    server_total = server_h * 60 + server_m
+    user_total = user_h * 60 + user_m
+    diff = server_total - user_total  # server - user
+
+    # нормализуем в диапазон [-12ч, +12ч], чтобы не было странных смещений
+    if diff > 12 * 60:
+        diff -= 24 * 60
+    elif diff < -12 * 60:
+        diff += 24 * 60
+
+    offset_minutes = diff  # tz_offset_minutes
+
+    await set_user_tz_offset(message.from_user.id, offset_minutes)
+    await state.clear()
+
+    await show_screen(
+        message,
+        (
+            "Часовой пояс настроен.\n"
+            f"Смещение относительно сервера: {offset_minutes:+d} минут.\n"
+            "Теперь дедлайны будут считаться относительно твоего времени."
+        ),
+        reply_markup=build_start_keyboard(),
+    )

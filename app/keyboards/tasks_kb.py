@@ -70,6 +70,16 @@ def tasks_page_keyboard(
     if nav_row:
         rows.append(nav_row)
 
+    
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Добавить задачу ➕",
+                callback_data="cmd_add",
+            )
+        ]
+    )
+
     # режим удаления
     rows.append(
         [

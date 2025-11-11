@@ -406,8 +406,23 @@ async def render_tasks_screen(
 ) -> None:
     tasks = await storage.list_user_tasks(user_id)
     if not tasks:
-        text = (prefix + "\n\n" if prefix else "") + "У вас нет задач."
-        await show_screen(event, text)
+        if prefix:
+            text = prefix + "\n\nУ вас нет задач."
+        else:
+            text = "У вас нет задач."
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="➕ Добавить задачу",
+                        callback_data="cmd_add",
+                    )
+                ]
+            ]
+        )
+
+        await show_screen(event, text, reply_markup=kb)
         return
 
     tasks_sorted = sorted(
