@@ -920,10 +920,24 @@ async def cb_task_mark_done(query: CallbackQuery):
 async def cb_task_confirm_delete(query: CallbackQuery):
     await query.answer()
     try:
-        tid = int(query.data.split(":", 2)[2])
+        tid = int((query.data or "").split(":", 2)[2])
     except Exception:
-        await query.message.answer("Некорректный id задачи.")
+        await show_screen(query, "Некорректный id задачи.")
         return
+
+    # считаем «человеческий» номер задачи в текущем списке
+    tasks = await storage.list_user_tasks(query.from_user.id)
+    tasks_sorted = sorted(
+        tasks, key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
+    )
+
+    visible_num = None
+    for idx, t in enumerate(tasks_sorted, start=1):
+        if t.get("id") == tid:
+            visible_num = idx
+            break
+
+    display_num = visible_num if visible_num is not None else tid
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -941,27 +955,43 @@ async def cb_task_confirm_delete(query: CallbackQuery):
     )
     await show_screen(
         query,
-        f"Подтвердите удаление задачи #{tid}",
+        f"Подтвердите удаление задачи №{display_num}",
         reply_markup=kb,
     )
+
 
 
 @todo_router.callback_query(F.data.startswith("task:do_delete:"))
 async def cb_task_do_delete(query: CallbackQuery):
     await query.answer()
     try:
-        tid = int(query.data.split(":", 2)[2])
+        tid = int((query.data or "").split(":", 2)[2])
     except Exception:
-        await query.message.answer("Некорректный id задачи.")
+        await show_screen(query, "Некорректный id задачи.")
         return
 
-    ok = await storage.delete_task(tid, query.from_user.id)
-    prefix = (
-        f"Задача #{tid} удалена."
-        if ok
-        else "Задача не найдена или не относится к вам."
+    # считаем номер в списке ДО удаления
+    tasks = await storage.list_user_tasks(query.from_user.id)
+    tasks_sorted = sorted(
+        tasks, key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
     )
-    await render_tasks_screen(query, query.from_user.id, prefix=prefix)
+
+    visible_num = None
+    for idx, t in enumerate(tasks_sorted, start=1):
+        if t.get("id") == tid:
+            visible_num = idx
+            break
+
+    display_num = visible_num if visible_num is not None else tid
+
+    ok = await storage.delete_task(tid, query.from_user.id)
+
+    if ok is False:
+        await show_screen(query, "Не удалось удалить задачу.")
+        return
+
+    await show_screen(query, f"Задача №{display_num} удалена.")
+
 
 
 @todo_router.callback_query(F.data == "task:cancel")

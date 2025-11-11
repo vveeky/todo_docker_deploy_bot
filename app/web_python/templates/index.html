@@ -3,64 +3,112 @@
 {% block title %}Мои задачи{% endblock %}
 
 {% block content %}
-<section class="add-form">
-  <form method="post" action="/tasks/add">
-    <input type="hidden" name="user_id" value="{{ user_id }}" />
-    <input
-      type="text"
-      name="text"
-      placeholder="Новая задача"
-      required
-      autocomplete="off"
-    />
-    <button type="submit">Добавить</button>
-  </form>
+
+<section class="dashboard-grid">
+  <!-- Левая колонка: добавление + команды -->
+  <div class="panel">
+    <h2 class="panel-title">Добавить задачу</h2>
+    <p class="panel-subtitle">
+      Задача сразу появится и в боте, и на этом экране.
+    </p>
+
+    <form method="post" action="/tasks/add" class="form-vertical">
+      <input type="hidden" name="user_id" value="{{ user_id }}" />
+
+      <label class="field-label">
+        Текст задачи
+        <input
+          type="text"
+          name="text"
+          placeholder="Например: Сдать отчёт по практике"
+          required
+          autocomplete="off"
+        />
+      </label>
+
+      <button type="submit" class="btn btn-primary">Добавить</button>
+    </form>
+  </div>
+
+  <!-- Правая колонка: мини-справка -->
+  <div class="panel">
+    <h2 class="panel-title">Команды бота</h2>
+    <ul class="help-list">
+      <li><code>/start</code> — главное меню.</li>
+      <li><code>/help</code> — список команд.</li>
+      <li><code>/add</code> — добавить задачу.</li>
+      <li><code>/list</code> — список задач.</li>
+      <li><code>/site</code> — открыть этот сайт.</li>
+    </ul>
+  </div>
 </section>
 
-<section class="tasks">
-  <div class="tasks-toolbar">
-    {% if delete_mode %}
-      <span>Режим удаления включён</span>
-      <a href="/?user_id={{ user_id }}" class="link-button">Выйти</a>
-    {% else %}
-      <a href="/?user_id={{ user_id }}&mode=delete" class="link-button">Режим удаления</a>
-    {% endif %}
+<section class="panel panel-full">
+  <div class="panel-header">
+    <div>
+      <h2 class="panel-title">Список задач</h2>
+      <p class="panel-subtitle">
+        Все задачи для пользователя <code>{{ user_id }}</code>.
+      </p>
+    </div>
+
+    <div class="tasks-toolbar">
+      {% if delete_mode %}
+        <span class="badge badge-red">Режим удаления</span>
+        <a href="/?user_id={{ user_id }}" class="btn btn-ghost">Выйти</a>
+      {% else %}
+        <a
+          href="/?user_id={{ user_id }}&mode=delete"
+          class="btn btn-ghost"
+        >Режим удаления</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if tasks %}
-    <ul>
+    <ul class="tasks-list">
       {% for t in tasks %}
         <li class="task {% if t.is_done %}task-done{% endif %}">
           <div class="task-main">
-            <span class="task-text">
-              <a href="/tasks/{{ t.id }}?user_id={{ user_id }}">
+            <div class="task-title-row">
+              <span class="task-status-dot {% if t.is_done %}done{% endif %}"></span>
+              <a
+                href="/tasks/{{ t.id }}?user_id={{ user_id }}"
+                class="task-text-link"
+              >
                 {{ t.text }}
               </a>
-            </span>
-            <span class="task-meta">
-              Создано: {{ t.created_at_fmt }} |
-              Дедлайн: {{ t.due_at_fmt }}
-            </span>
+            </div>
+            <div class="task-meta">
+              <span>Создано: {{ t.created_at_fmt }}</span>
+              <span>Дедлайн: {{ t.due_at_fmt }}</span>
+            </div>
           </div>
+
           <div class="task-actions">
             {% if not delete_mode %}
               <form method="post" action="/tasks/{{ t.id }}/toggle">
                 <input type="hidden" name="user_id" value="{{ user_id }}" />
-                <button type="submit">
+                <button type="submit" class="btn btn-small">
                   {% if t.is_done %}Вернуть в работу{% else %}Готово{% endif %}
                 </button>
               </form>
             {% endif %}
             <form method="post" action="/tasks/{{ t.id }}/delete">
               <input type="hidden" name="user_id" value="{{ user_id }}" />
-              <button type="submit" class="danger">Удалить</button>
+              <button type="submit" class="btn btn-small btn-danger">
+                Удалить
+              </button>
             </form>
           </div>
         </li>
       {% endfor %}
     </ul>
   {% else %}
-    <p>Пока нет задач. Добавь первую сверху.</p>
+    <p class="empty-text">
+      Пока нет задач. Добавь первую в форме сверху.
+    </p>
   {% endif %}
 </section>
+
 {% endblock %}

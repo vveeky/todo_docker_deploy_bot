@@ -1,12 +1,25 @@
 # app/utils/ui.py
-from typing import Dict, Optional, Union, Tuple
+from typing import Optional, Union
 
 from aiogram import Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 from aiogram.exceptions import TelegramBadRequest
 
-# (chat_id, user_id) -> last ui message id
-_last_ui: Dict[Tuple[int, int], int] = {}
+from app.utils import storage
+
+
+async def _resolve_chat_user(
+    event: Union[Message, CallbackQuery],
+) -> tuple[Bot, int, int]:
+    if isinstance(event, CallbackQuery):
+        bot: Bot = event.bot
+        user_id = event.from_user.id
+        chat_id = event.message.chat.id
+    else:
+        bot = event.bot
+        user_id = event.from_user.id
+        chat_id = event.chat.id
+    return bot, chat_id, user_id
 
 
 async def show_screen(
@@ -15,22 +28,13 @@ async def show_screen(
     reply_markup: Optional[InlineKeyboardMarkup] = None,
 ) -> None:
     """
-    Держит у пользователя в конкретном чате одно сообщение UI:
-    1) если есть прошлое UI-сообщение, пытается отредактировать его;
-    2) если редактирование не удалось, пытается удалить это сообщение;
-    3) после этого отправляет новое сообщение и запоминает его id.
+    Единый UI-экран:
+    - message_id хранится в Postgres (ui_state);
+    - пытаемся редактировать, если не вышло — удаляем и создаём новый;
+    - новый message_id пишем в ui_state.
     """
-    if isinstance(event, CallbackQuery):
-        bot: Bot = event.bot
-        user_id = event.from_user.id
-        chat_id = event.message.chat.id
-    else:
-        bot: Bot = event.bot
-        user_id = event.from_user.id
-        chat_id = event.chat.id
-
-    key = (chat_id, user_id)
-    msg_id = _last_ui.get(key)
+    bot, chat_id, user_id = await _resolve_chat_user(event)
+    msg_id = await storage.get_ui_message_id(chat_id, user_id)
 
     if msg_id is not None:
         try:
@@ -42,6 +46,7 @@ async def show_screen(
             )
             return
         except TelegramBadRequest:
+            # пробуем удалить и потом создать новое
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except TelegramBadRequest:
@@ -55,7 +60,8 @@ async def show_screen(
                 pass
 
     sent = await bot.send_message(chat_id, text, reply_markup=reply_markup)
-    _last_ui[key] = sent.message_id
+    await storage.set_ui_message_id(chat_id, user_id, sent.message_id)
+
 
 async def show_notification(
     bot: Bot,
@@ -64,16 +70,17 @@ async def show_notification(
     text: str,
 ) -> None:
     """
-    Показывает уведомление поверх текущего UI:
-    - пытается отредактировать последнее UI-сообщение;
-    - если не получается, удаляет его и шлёт новое;
-    - после этого забывает это сообщение как UI, чтобы
-      следующее show_screen создало новый экран.
+    Уведомление для notifier:
+    - пытается перезаписать текущий UI-экран;
+    - если не получается, удаляет его и отправляет новое сообщение;
+    - после этого очищает ui_state, чтобы следующий show_screen создал новый экран.
     """
-    key = (chat_id, user_id)
-    msg_id = _last_ui.pop(key, None)
+    msg_id = await storage.get_ui_message_id(chat_id, user_id)
 
     if msg_id is not None:
+        # больше не считаем это UI-сообщением
+        await storage.clear_ui_message_id(chat_id, user_id)
+
         try:
             await bot.edit_message_text(
                 chat_id=chat_id,
@@ -91,6 +98,8 @@ async def show_notification(
                 await bot.delete_message(chat_id=chat_id, message_id=msg_id)
             except Exception:
                 pass
+    else:
+        await storage.clear_ui_message_id(chat_id, user_id)
 
     try:
         await bot.send_message(chat_id=chat_id, text=text)

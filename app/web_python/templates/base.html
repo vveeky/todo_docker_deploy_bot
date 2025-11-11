@@ -1,18 +1,81 @@
-<!-- app/web_python/templates/base.html -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, shrink-to-fit=no"
+  />
   <title>{% block title %}TODO (Python){% endblock %}</title>
+
+  <!-- Шрифт -->
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  />
+
+  <!-- Flatpickr (календарь + время) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+  />
+
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="header">
-    <h1>TODO (Python templates)</h1>
-  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-dot"></span>
+        <span class="logo-text">TodoFlow</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="/?user_id={{ user_id|default('0') }}" class="nav-link">
+          📝 Мои задачи
+        </a>
+      </nav>
 
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
+      <div class="sidebar-footer">
+        <p>Управление задачами через Telegram и веб.</p>
+        <p class="sidebar-note">
+          Команда в боте: <code>/site</code>
+        </p>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="header">
+        <div>
+          <h1>TODO Dashboard</h1>
+          <p class="header-subtitle">
+            Синхрон с Telegram-ботом. Дедлайны, статусы, напоминания.
+          </p>
+        </div>
+      </header>
+
+      <main class="container">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <!-- Flatpickr -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const inputs = document.querySelectorAll(".js-datetime");
+
+      if (inputs.length > 0 && window.flatpickr) {
+        inputs.forEach((input) => {
+          window.flatpickr(input, {
+            enableTime: true,
+            time_24hr: true,
+            dateFormat: "Y-m-d H:i",
+            allowInput: true, // можно руками поправить, если очень надо
+          });
+        });
+      }
+    });
+  </script>
 </body>
 </html>

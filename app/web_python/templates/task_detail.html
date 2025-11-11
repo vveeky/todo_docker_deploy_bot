@@ -3,41 +3,82 @@
 {% block title %}Задача #{{ task.id }}{% endblock %}
 
 {% block content %}
-<section class="task-detail">
-  <h2>Задача #{{ task.id }}</h2>
-
-  <p><strong>Текст:</strong> {{ task.text }}</p>
-  <p><strong>Создано:</strong> {{ task.created_at_fmt }}</p>
-  <p><strong>Дедлайн:</strong> {{ task.due_at_fmt }}</p>
-
-  <form method="post" action="/tasks/{{ task.id }}/edit" class="task-detail-form">
-    <input type="hidden" name="user_id" value="{{ user_id }}" />
-
-    <label>
-      Новый текст
-      <input
-        type="text"
-        name="text"
-        value="{{ task.text }}"
-        autocomplete="off"
-      />
-    </label>
-
-    <label>
-      Дедлайн (YYYY-MM-DD HH:MM, локальное время)
-      <input
-        type="text"
-        name="due_at"
-        value="{{ due_input }}"
-        placeholder="2025-12-31 23:59"
-        autocomplete="off"
-      />
-    </label>
-
-    <div class="task-detail-actions">
-      <button type="submit">Сохранить</button>
-      <a href="/?user_id={{ user_id }}" class="link-button">К списку</a>
+<section class="panel panel-full">
+  <div class="panel-header">
+    <div>
+      <h2 class="panel-title">Задача #{{ task.id }}</h2>
+      <p class="panel-subtitle">
+        Подробное редактирование задачи для пользователя
+        <code>{{ user_id }}</code>.
+      </p>
     </div>
-  </form>
+    <div>
+      <a href="/?user_id={{ user_id }}" class="btn btn-ghost">
+        ← К списку задач
+      </a>
+    </div>
+  </div>
+
+  <div class="task-detail">
+    <div class="task-detail-meta">
+      <div>
+        <span class="meta-label">Создано</span>
+        <span class="meta-value">{{ task.created_at_fmt }}</span>
+      </div>
+      <div>
+        <span class="meta-label">Текущий дедлайн</span>
+        <span class="meta-value">{{ task.due_at_fmt }}</span>
+      </div>
+      <div>
+        <span class="meta-label">Статус</span>
+        <span class="meta-value">
+          {% if task.is_done %}✅ выполнена{% else %}✳️ в работе{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <form
+      method="post"
+      action="/tasks/{{ task.id }}/edit"
+      class="form-vertical task-detail-form"
+    >
+      <input type="hidden" name="user_id" value="{{ user_id }}" />
+
+      <label class="field-label">
+        Текст задачи
+        <input
+          type="text"
+          name="text"
+          value="{{ task.text }}"
+          autocomplete="off"
+        />
+      </label>
+
+      <label class="field-label">
+        Дедлайн
+        <input
+          type="text"
+          name="due_at"
+          class="js-datetime"
+          value="{{ due_input }}"
+          placeholder="Выбери дату и время"
+          autocomplete="off"
+        />
+        <span class="field-hint">
+          Кликни по полю, чтобы открыть календарь с часами. Формат сохранения:
+          <code>YYYY-MM-DD HH:MM</code>.
+        </span>
+      </label>
+
+      <div class="task-detail-actions">
+        <button type="submit" class="btn btn-primary">
+          Сохранить
+        </button>
+        <a href="/?user_id={{ user_id }}" class="btn btn-ghost">
+          Отмена
+        </a>
+      </div>
+    </form>
+  </div>
 </section>
 {% endblock %}

@@ -1,0 +1,3 @@
+SELECT *
+FROM ui_state
+LIMIT 5;

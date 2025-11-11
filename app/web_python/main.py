@@ -1,5 +1,6 @@
 # app/web_python/main.py
 from pathlib import Path
+from dotenv import load_dotenv
 import datetime as dt
 
 from fastapi import FastAPI, Request, Form
@@ -9,10 +10,28 @@ from fastapi.staticfiles import StaticFiles
 
 from app.utils import storage, dates
 
+from app.db.core import init_db_and_schema
+
+# ищем .env в корне проекта (на 2 уровня вверх от этого файла: app/web_python -> app -> проект)
+project_root = Path(__file__).resolve().parents[2]
+dotenv_path = project_root / ".env"
+
+# если .env существует — явно подгружаем его, иначе пробуем дефолтное поведение
+if dotenv_path.exists():
+    load_dotenv(dotenv_path)
+else:
+    load_dotenv()
+
+
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="TODO Web (Python templates)")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+@app.on_event("startup")
+async def on_startup():
+    await init_db_and_schema()
+
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
