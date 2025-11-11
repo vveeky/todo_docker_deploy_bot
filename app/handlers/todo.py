@@ -19,6 +19,9 @@ from app.states.todo_states import TodoStates
 from app.states.date_picker import DatePickerState
 from app.utils.ui import show_screen
 from app.utils.dates import format_dt
+from app.db.core import get_or_create_web_token
+
+PYTHON_BASE = os.getenv("PYTHON_BASE", "http://127.0.0.1:8001")
 
 todo_router = Router()
 
@@ -82,16 +85,47 @@ def _dp_stage_label(stage: str) -> str:
         "year": "год",
     }.get(stage, stage)
 
+def _dp_month_name(month: int) -> str:
+    month_names = [
+        "январь",
+        "февраль",
+        "март",
+        "апрель",
+        "май",
+        "июнь",
+        "июль",
+        "август",
+        "сентябрь",
+        "октябрь",
+        "ноябрь",
+        "декабрь",
+    ]
+    if 1 <= month <= 12:
+        return month_names[month - 1]
+    return str(month)
+
+
 
 def _dp_text(data: dict) -> str:
     dt_val = _dp_current_dt(data)
     stage = data.get("dp_stage", "day")
+
+    year = dt_val.year
+    month = dt_val.month
+    day = dt_val.day
+    hour = dt_val.hour
+    minute = dt_val.minute
+
     return (
         "Выбор даты и времени для дедлайна.\n"
-        f"Текущая дата: {dt_val.strftime('%Y-%m-%d %H:%M')}\n\n"
-        f"Текущий шаг: {_dp_stage_label(stage)}.\n"
+        "Текущие значения:\n"
+        f"Год: {year}\n"
+        f"Месяц: {_dp_month_name(month)}\n"
+        f"День: {day}\n"
+        f"Час: {hour:02d}\n"
+        f"Минута: {minute:02d}\n\n"
+        f"Вы сейчас выбираете: {_dp_stage_label(stage)}.\n"
         "Используй кнопки ниже для изменения.\n"
-        "По умолчанию — следующий день, 00:00, если ты ничего не меняешь."
     )
 
 
@@ -340,7 +374,13 @@ async def _dp_show_screen(event: Union[Message, CallbackQuery], state: FSMContex
     if stage == "year":
         text = (
             "Выбор года для дедлайна.\n"
-            f"Текущая дата: {current_dt.strftime('%Y-%m-%d %H:%M')}\n\n"
+            "Текущие значения:\n"
+            f"год: {year}\n"
+            f"месяц: {_dp_month_name(month)}\n"
+            f"день: {day}\n"
+            f"час: {hour:02d}\n"
+            f"минута: {minute:02d}\n\n"
+            "Вы сейчас меняете: год.\n"
             "Отправь новый год числом, например: 2026.\n"
             "Или нажми «К дню» или «Сохранить»."
         )
@@ -405,6 +445,11 @@ async def render_tasks_screen(
     prefix: str | None = None,
 ) -> None:
     tasks = await storage.list_user_tasks(user_id)
+
+    # ссылку на сайт считаем один раз
+    token = await get_or_create_web_token(user_id)
+    site_url = f"{PYTHON_BASE}/?token={token}"
+
     if not tasks:
         if prefix:
             text = prefix + "\n\nУ вас нет задач."
@@ -418,18 +463,25 @@ async def render_tasks_screen(
                         text="➕ Добавить задачу",
                         callback_data="cmd_add",
                     )
-                ]
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Открыть сайт",
+                        url=site_url,
+                    )
+                ],
             ]
         )
-
         await show_screen(event, text, reply_markup=kb)
         return
 
     tasks_sorted = sorted(
-        tasks, key=lambda t: (t.get("is_done", 0), t.get("id", 0))
+        tasks,
+        key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
     )
     total = len(tasks_sorted)
     total_pages = (total + DEFAULT_PER_PAGE - 1) // DEFAULT_PER_PAGE
+
     if page < 0:
         page = 0
     if page > total_pages - 1:
@@ -444,8 +496,14 @@ async def render_tasks_screen(
     else:
         text = header
 
-    kb = tasks_page_keyboard(tasks_sorted, page=page, per_page=DEFAULT_PER_PAGE)
+    kb = tasks_page_keyboard(
+        tasks_sorted,
+        page=page,
+        per_page=DEFAULT_PER_PAGE,
+        site_url=site_url,
+    )
     await show_screen(event, text, reply_markup=kb)
+
 
 
 async def render_task_card(
@@ -454,7 +512,6 @@ async def render_task_card(
     prefix: str | None = None,
 ) -> None:
     tid = task["id"]
-
     due_str = format_dt(task.get("due_at")) if task.get("due_at") else "—"
     created_str = format_dt(task.get("created_at"))
 
@@ -465,8 +522,18 @@ async def render_task_card(
         f"Дедлайн: {due_str}\n"
         f"Создано: {created_str}"
     )
+
     if prefix:
         text = prefix + "\n\n" + text
+
+    # user_id нужен для токена
+    if isinstance(event, Message):
+        user_id = event.from_user.id
+    else:
+        user_id = event.from_user.id
+
+    token = await get_or_create_web_token(user_id)
+    detail_url = f"{PYTHON_BASE}/tasks/{tid}?token={token}"
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -492,13 +559,21 @@ async def render_task_card(
             ],
             [
                 InlineKeyboardButton(
+                    text="🌐 Детальный вид на сайте",
+                    url=detail_url,
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="⬅️ К списку задач",
                     callback_data="cmd_list",
                 )
             ],
         ]
     )
+
     await show_screen(event, text, reply_markup=kb)
+
 
 
 

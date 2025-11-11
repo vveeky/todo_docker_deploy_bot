@@ -92,6 +92,20 @@ def build_help_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def build_time_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Отменить",
+                    callback_data="cmd_time_cancel",
+                )
+            ]
+        ]
+    )
+
+
+
 def build_site_keyboard(token: str) -> InlineKeyboardMarkup:
     python_url = f"{PYTHON_BASE}/?token={token}"
 
@@ -279,7 +293,20 @@ async def cmd_time(event: Union[Message, CallbackQuery], state: FSMContext):
             "Напиши, сколько у тебя сейчас времени, в формате HH:MM.\n"
             "Минуты должны совпадать."
         ),
+        reply_markup=build_time_keyboard(),
     )
+
+
+@start_router.callback_query(F.data == "cmd_time_cancel")
+async def cmd_time_cancel(event: CallbackQuery, state: FSMContext):
+    await event.answer()
+    await state.clear()
+    await show_screen(
+        event,
+        START_TEXT,
+        reply_markup=build_start_keyboard(),
+    )
+
 
 
 # ===== обработка ввода времени в формате HH:MM =====

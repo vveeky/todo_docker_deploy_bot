@@ -1,5 +1,5 @@
 # app/keyboards/tasks_kb.py
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -10,7 +10,9 @@ def tasks_page_keyboard(
     tasks_sorted: List[Dict],
     page: int,
     per_page: int = DEFAULT_PER_PAGE,
+    site_url: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
+
     """
     Строит клавиатуру для списка задач:
     - нумерация задач в UI: 1..N по позиции в общем отсортированном списке;
@@ -79,6 +81,18 @@ def tasks_page_keyboard(
             )
         ]
     )
+
+        # кнопка открытия сайта (если передали URL)
+    if site_url:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🌐 Открыть сайт",
+                    url=site_url,
+                )
+            ]
+        )
+
 
     # режим удаления
     rows.append(
