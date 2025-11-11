@@ -1131,7 +1131,7 @@ async def cb_task_do_delete(query: CallbackQuery):
         return
     
     # 1) отдельное уведомление "Задача №N удалена"
-    await show_notification(
+    await show_screen(
         bot=query.message.bot,
         chat_id=chat_id,
         user_id=user_id,
