@@ -20,7 +20,7 @@ from app.states.todo_states import TodoStates
 from app.states.date_picker import DatePickerState
 from app.utils.ui import show_screen
 from app.utils.dates import format_dt
-from app.db.core import get_or_create_web_token
+from app.db.core import get_or_create_web_token, get_user_tz_offset
 
 PYTHON_BASE = os.getenv("PYTHON_BASE", "http://127.0.0.1:8001")
 
@@ -117,17 +117,27 @@ def _dp_text(data: dict) -> str:
     hour = dt_val.hour
     minute = dt_val.minute
 
+    def line(field: str, label: str, value: str) -> str:
+        if stage == field:
+            return f"Вы меняете {label}: текущий — {value}"
+        return f"{label}: {value}"
+
+    lines = [
+        line("year", "Год", str(year)),
+        line("month", "Месяц", _dp_month_name(month)),
+        line("day", "День", str(day)),
+        line("hour", "Час", f"{hour:02d}"),
+        line("minute", "Минута", f"{minute:02d}"),
+    ]
+
     return (
         "Выбор даты и времени для дедлайна.\n"
         "Текущие значения:\n"
-        f"Год: {year}\n"
-        f"Месяц: {_dp_month_name(month)}\n"
-        f"День: {day}\n"
-        f"Час: {hour:02d}\n"
-        f"Минута: {minute:02d}\n\n"
-        f"Вы сейчас выбираете: {_dp_stage_label(stage)}.\n"
+        + "\n".join(lines)
+        + "\n\n"
         "Используй кнопки ниже для изменения.\n"
     )
+
 
 
 def _dp_build_kb_for_stage(
@@ -367,39 +377,35 @@ async def _dp_show_screen(event: Union[Message, CallbackQuery], state: FSMContex
     day = int(data.get("dp_day"))
     hour = int(data.get("dp_hour"))
     minute = int(data.get("dp_minute"))
+
     year, month, day, hour, minute = _dp_normalize_components(
         year, month, day, hour, minute
     )
-    current_dt = dt.datetime(year, month, day, hour, minute)
+
+    normalized = {
+        "dp_year": year,
+        "dp_month": month,
+        "dp_day": day,
+        "dp_hour": hour,
+        "dp_minute": minute,
+        "dp_stage": stage,
+    }
+
+    text = _dp_text(normalized)
 
     if stage == "year":
-        text = (
-            "Выбор года для дедлайна.\n"
-            "Текущие значения:\n"
-            f"год: {year}\n"
-            f"месяц: {_dp_month_name(month)}\n"
-            f"день: {day}\n"
-            f"час: {hour:02d}\n"
-            f"минута: {minute:02d}\n\n"
-            "Вы сейчас меняете: год.\n"
+        # доп. инструкции именно для ввода года
+        text += (
+            "\nСейчас вы меняете: год.\n"
             "Отправь новый год числом, например: 2026.\n"
             "Или нажми «К дню» или «Сохранить»."
         )
         kb = _dp_build_kb_year()
     else:
-        text = _dp_text(
-            {
-                "dp_year": year,
-                "dp_month": month,
-                "dp_day": day,
-                "dp_hour": hour,
-                "dp_minute": minute,
-                "dp_stage": stage,
-            }
-        )
         kb = _dp_build_kb_for_stage(stage, year, month, day, hour, minute)
 
     await show_screen(event, text, reply_markup=kb)
+
 
 
 async def _dp_start_for_task(
@@ -410,16 +416,33 @@ async def _dp_start_for_task(
     """
     Запуск пикера дат для конкретной задачи.
     По умолчанию: текущий дедлайн задачи, если есть,
-    иначе — следующий день, 00:00.
+    иначе — следующий день, 00:00 по локальному времени пользователя.
     """
+    if isinstance(event, Message):
+        user_id = event.from_user.id
+    else:
+        user_id = event.from_user.id
+
+    base: dt.datetime | None = None
+
+    # если дедлайн уже есть — используем его как базу
     if task.get("due_at"):
         try:
             base = dt.datetime.fromisoformat(task["due_at"])
         except Exception:
-            base = dt.datetime.now() + dt.timedelta(days=1)
-            base = base.replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        base = dt.datetime.now() + dt.timedelta(days=1)
+            base = None
+
+    # если дедлайна нет или не распарсился — "завтра 00:00" по tz пользователя
+    if base is None:
+        offset = await get_user_tz_offset(user_id)
+        if offset is None:
+            # если вдруг tz ещё не установлен, fallback на серверное время
+            now_local = dt.datetime.now()
+        else:
+            now_utc = dt.datetime.now(dt.timezone.utc)
+            now_local = now_utc + dt.timedelta(minutes=offset)
+
+        base = now_local + dt.timedelta(days=1)
         base = base.replace(hour=0, minute=0, second=0, microsecond=0)
 
     await state.set_state(DatePickerState.picking)
@@ -436,6 +459,7 @@ async def _dp_start_for_task(
         }
     )
     await _dp_show_screen(event, state)
+
 
 
 
@@ -513,8 +537,37 @@ async def render_task_card(
     prefix: str | None = None,
 ) -> None:
     tid = task["id"]
-    due_str = format_dt(task.get("due_at")) if task.get("due_at") else "—"
-    created_str = format_dt(task.get("created_at"))
+
+    # кто смотрит задачу
+    if isinstance(event, Message):
+        user_id = event.from_user.id
+    else:
+        user_id = event.from_user.id
+
+    offset = await get_user_tz_offset(user_id)
+    offset_minutes = offset if offset is not None else 0
+
+    def _to_local_iso(iso_str: Optional[str]) -> Optional[str]:
+        if not iso_str:
+            return None
+        try:
+            d = dt.datetime.fromisoformat(iso_str)
+        except Exception:
+            return None
+        # приводим к UTC и сдвигаем на offset
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=dt.timezone.utc)
+        else:
+            d = d.astimezone(dt.timezone.utc)
+        local = d + dt.timedelta(minutes=offset_minutes)
+        # format_dt ожидает обычную ISO-строку без tz
+        return local.replace(tzinfo=None, microsecond=0).isoformat()
+
+    due_local_iso = _to_local_iso(task.get("due_at"))
+    created_local_iso = _to_local_iso(task.get("created_at"))
+
+    due_str = format_dt(due_local_iso) if due_local_iso else "—"
+    created_str = format_dt(created_local_iso) if created_local_iso else "—"
 
     text = (
         f"Задача #{task['id']}\n"
@@ -527,12 +580,7 @@ async def render_task_card(
     if prefix:
         text = prefix + "\n\n" + text
 
-    # user_id нужен для токена
-    if isinstance(event, Message):
-        user_id = event.from_user.id
-    else:
-        user_id = event.from_user.id
-
+    # user_id уже есть, здесь только токен
     token = await get_or_create_web_token(user_id)
     detail_url = f"{PYTHON_BASE}/tasks/{tid}?token={token}"
 
@@ -550,7 +598,7 @@ async def render_task_card(
             ],
             [
                 InlineKeyboardButton(
-                    text="Пометить как выполнено",
+                    text="Отметить выполненной",
                     callback_data=f"task:mark_done:{tid}",
                 ),
                 InlineKeyboardButton(
@@ -574,6 +622,7 @@ async def render_task_card(
     )
 
     await show_screen(event, text, reply_markup=kb)
+
 
 
 
