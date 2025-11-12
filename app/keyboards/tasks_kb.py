@@ -1,7 +1,7 @@
 # app/keyboards/tasks_kb.py
 from typing import List, Dict, Optional
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 DEFAULT_PER_PAGE = 5
 
@@ -88,7 +88,7 @@ def tasks_page_keyboard(
             [
                 InlineKeyboardButton(
                     text="🌐 Открыть сайт",
-                    url=site_url,
+                    web_app=WebAppInfo(url=site_url),
                 )
             ]
         )

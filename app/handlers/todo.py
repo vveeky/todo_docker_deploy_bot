@@ -10,6 +10,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    WebAppInfo,
 )
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -505,7 +506,7 @@ async def render_tasks_screen(
                 [
                     InlineKeyboardButton(
                         text="🌐 Открыть сайт",
-                        url=site_url,
+                        web_app=WebAppInfo(url=site_url),
                     )
                 ],
             ]

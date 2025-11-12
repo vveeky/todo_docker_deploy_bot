@@ -9,6 +9,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    WebAppInfo,
 )
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -114,7 +115,7 @@ def build_site_keyboard(token: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="Открыть сайт 🌐",
-                    url=python_url,
+                    web_app=WebAppInfo(url=python_url),
                 ),
             ],
             [
