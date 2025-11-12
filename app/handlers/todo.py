@@ -623,7 +623,7 @@ async def render_task_card(
             [
                 InlineKeyboardButton(
                     text="🌐 Детальный вид на сайте",
-                    url=detail_url,
+                    web_app=WebAppInfo(url=detail_url),
                 )
             ],
             [
