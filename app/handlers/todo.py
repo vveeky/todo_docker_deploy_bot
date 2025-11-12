@@ -558,30 +558,33 @@ async def render_task_card(
     else:
         user_id = event.from_user.id
 
+    # offset в минутах (может быть None)
     offset = await get_user_tz_offset(user_id)
-    offset_minutes = offset if offset is not None else 0
 
-    def _to_local_iso(iso_str: Optional[str]) -> Optional[str]:
+    def _fmt_local(iso_str: Optional[str]) -> str:
+        """Корректно форматирует ISO-дату в локаль пользователя.
+        - Наивные даты считаем уже локальными и не двигаем.
+        - Осведомлённые (с tz) -> в UTC -> +offset (если задан).
+        """
         if not iso_str:
-            return None
+            return "—"
         try:
             d = dt.datetime.fromisoformat(iso_str)
         except Exception:
-            return None
-        # приводим к UTC и сдвигаем на offset
+            return iso_str  # показываем как есть
+
         if d.tzinfo is None:
-            d = d.replace(tzinfo=dt.timezone.utc)
+            local = d  # уже локальная
         else:
-            d = d.astimezone(dt.timezone.utc)
-        local = d + dt.timedelta(minutes=offset_minutes)
-        # format_dt ожидает обычную ISO-строку без tz
-        return local.replace(tzinfo=None, microsecond=0).isoformat()
+            # к UTC без tzinfo
+            local = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
+            if offset is not None:
+                local = local + dt.timedelta(minutes=offset)
 
-    due_local_iso = _to_local_iso(task.get("due_at"))
-    created_local_iso = _to_local_iso(task.get("created_at"))
+        return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
 
-    due_str = format_dt(due_local_iso) if due_local_iso else "—"
-    created_str = format_dt(created_local_iso) if created_local_iso else "—"
+    due_str = _fmt_local(task.get("due_at"))
+    created_str = _fmt_local(task.get("created_at"))
 
     text = (
         f"Задача #{task['id']}\n"
@@ -594,7 +597,7 @@ async def render_task_card(
     if prefix:
         text = prefix + "\n\n" + text
 
-    # user_id уже есть, здесь только токен
+    # ссылка на детальный вид на сайте
     token = await get_or_create_web_token(user_id)
     detail_url = f"{PYTHON_BASE}/tasks/{tid}?token={token}"
 
@@ -636,6 +639,7 @@ async def render_task_card(
     )
 
     await show_screen(event, text, reply_markup=kb)
+
 
 
 

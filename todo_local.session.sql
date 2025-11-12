@@ -1,3 +1,2 @@
-SELECT *
-FROM ui_state
-LIMIT 5;
+CREATE DATABASE max_habits;
+GRANT ALL PRIVILEGES ON DATABASE max_habits TO todo;
