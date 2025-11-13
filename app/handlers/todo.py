@@ -428,36 +428,37 @@ async def _dp_start_for_task(
     task: dict,
 ) -> None:
     """
-    Запуск пикера дат для конкретной задачи.
-    По умолчанию: текущий дедлайн задачи, если есть,
-    иначе — следующий день, 00:00 по локальному времени пользователя.
+    Старт пикера дат для задачи.
+    База для экрана:
+      - если есть due_at (UTC/aware или наивная как UTC) -> переводим в ЛОКАЛЬ: UTC - offset
+      - иначе "завтра 00:00" в ЛОКАЛИ пользователя
     """
-    if isinstance(event, Message):
-        user_id = event.from_user.id
-    else:
-        user_id = event.from_user.id
+    user_id = event.from_user.id
+    off = int((await get_user_tz_offset(user_id)) or 0)
 
-    base: dt.datetime | None = None
+    base_local: dt.datetime
 
-    # если дедлайн уже есть — используем его как базу
     if task.get("due_at"):
         try:
-            base = dt.datetime.fromisoformat(task["due_at"])
+            d = dt.datetime.fromisoformat(task["due_at"])
+            # к наивному UTC
+            if d.tzinfo is None:
+                utc_naive = d
+            else:
+                utc_naive = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
+            # локаль = UTC - offset
+            base_local = utc_naive - dt.timedelta(minutes=off)
         except Exception:
-            base = None
-
-    # если дедлайна нет или не распарсился — "завтра 00:00" по tz пользователя
-    if base is None:
-        offset = await get_user_tz_offset(user_id)
-        if offset is None:
-            # если вдруг tz ещё не установлен, fallback на серверное время
-            now_local = dt.datetime.now()
-        else:
-            now_utc = dt.datetime.now(dt.timezone.utc)
-            now_local = now_utc + dt.timedelta(minutes=offset)
-
-        base = now_local + dt.timedelta(days=1)
-        base = base.replace(hour=0, minute=0, second=0, microsecond=0)
+            # fallback: "завтра 00:00" в локали
+            now_local = dt.datetime.utcnow() - dt.timedelta(minutes=off)
+            base_local = (now_local + dt.timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+    else:
+        now_local = dt.datetime.utcnow() - dt.timedelta(minutes=off)
+        base_local = (now_local + dt.timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
 
     await state.set_state(DatePickerState.picking)
     await state.set_data(
@@ -465,14 +466,15 @@ async def _dp_start_for_task(
             "dp_mode": "due",
             "dp_task_id": task["id"],
             "dp_stage": "day",
-            "dp_year": base.year,
-            "dp_month": base.month,
-            "dp_day": base.day,
-            "dp_hour": base.hour,
-            "dp_minute": base.minute,
+            "dp_year": base_local.year,
+            "dp_month": base_local.month,
+            "dp_day": base_local.day,
+            "dp_hour": base_local.hour,
+            "dp_minute": base_local.minute,
         }
     )
     await _dp_show_screen(event, state)
+
 
 
 
@@ -553,38 +555,33 @@ async def render_task_card(
     tid = task["id"]
 
     # кто смотрит задачу
-    if isinstance(event, Message):
-        user_id = event.from_user.id
-    else:
-        user_id = event.from_user.id
+    user_id = event.from_user.id
 
-    # offset в минутах (может быть None)
+    # minutes to SUBTRACT from UTC to get user's local
     offset = await get_user_tz_offset(user_id)
+    off = int(offset or 0)
 
-    def _fmt_local(iso_str: Optional[str]) -> str:
-        """Корректно форматирует ISO-дату в локаль пользователя.
-        - Наивные даты считаем уже локальными и не двигаем.
-        - Осведомлённые (с tz) -> в UTC -> +offset (если задан).
-        """
+    def _fmt_utc_iso_to_local_str(iso_str: Optional[str]) -> str:
+        """ISO (UTC/aware или наивная как UTC) -> строка в локали пользователя."""
         if not iso_str:
             return "—"
         try:
             d = dt.datetime.fromisoformat(iso_str)
         except Exception:
-            return iso_str  # показываем как есть
+            return iso_str
 
+        # приводим к "наивному UTC"
         if d.tzinfo is None:
-            local = d  # уже локальная
+            utc_naive = d
         else:
-            # к UTC без tzinfo
-            local = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
-            if offset is not None:
-                local = local + dt.timedelta(minutes=offset)
+            utc_naive = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
 
+        # локальное = UTC − offset (offset = server - user)
+        local = utc_naive - dt.timedelta(minutes=off)
         return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
 
-    due_str = _fmt_local(task.get("due_at"))
-    created_str = _fmt_local(task.get("created_at"))
+    due_str = _fmt_utc_iso_to_local_str(task.get("due_at"))
+    created_str = _fmt_utc_iso_to_local_str(task.get("created_at"))
 
     text = (
         f"Задача #{task['id']}\n"
@@ -593,52 +590,29 @@ async def render_task_card(
         f"Дедлайн: {due_str}\n"
         f"Создано: {created_str}"
     )
-
     if prefix:
         text = prefix + "\n\n" + text
 
-    # ссылка на детальный вид на сайте
     token = await get_or_create_web_token(user_id)
     detail_url = f"{PYTHON_BASE}/tasks/{tid}?token={token}"
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="Изменить текст",
-                    callback_data=f"task:edit_text:{tid}",
-                ),
-                InlineKeyboardButton(
-                    text="Изменить дедлайн",
-                    callback_data=f"task:edit_due:{tid}",
-                ),
+                InlineKeyboardButton(text="Изменить текст", callback_data=f"task:edit_text:{tid}"),
+                InlineKeyboardButton(text="Изменить дедлайн", callback_data=f"task:edit_due:{tid}"),
             ],
             [
-                InlineKeyboardButton(
-                    text="Отметить выполненной",
-                    callback_data=f"task:mark_done:{tid}",
-                ),
-                InlineKeyboardButton(
-                    text="Удалить",
-                    callback_data=f"task:confirm_delete:{tid}",
-                ),
+                InlineKeyboardButton(text="Отметить выполненной", callback_data=f"task:mark_done:{tid}"),
+                InlineKeyboardButton(text="Удалить", callback_data=f"task:confirm_delete:{tid}"),
             ],
-            [
-                InlineKeyboardButton(
-                    text="🌐 Детальный вид на сайте",
-                    web_app=WebAppInfo(url=detail_url),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⬅️ К списку задач",
-                    callback_data="cmd_list",
-                )
-            ],
+            [InlineKeyboardButton(text="🌐 Детальный вид на сайте", web_app=WebAppInfo(url=detail_url))],
+            [InlineKeyboardButton(text="⬅️ К списку задач", callback_data="cmd_list")],
         ]
     )
 
     await show_screen(event, text, reply_markup=kb)
+
 
 
 
@@ -1365,12 +1339,6 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
             await show_screen(query, "Контекст выбора даты потерян.")
             return
 
-        try:
-            current_dt = _dp_current_dt(data)
-        except Exception:
-            await query.answer("Не удалось собрать дату.", show_alert=True)
-            return
-
         task_id = data.get("dp_task_id")
         if not isinstance(task_id, int):
             await state.clear()
@@ -1378,15 +1346,18 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
             await show_screen(query, "Контекст задачи потерян.")
             return
 
-        iso = current_dt.replace(second=0, microsecond=0).isoformat()
-        ok = await storage.set_due(task_id, query.from_user.id, iso)
+        # ЛОКАЛЬ (компоненты в FSM) -> UTC ISO
+        off = int((await get_user_tz_offset(query.from_user.id)) or 0)
+        due_iso = _dp_state_to_utc_iso(data, off)
+
+        ok = await storage.set_due(task_id, query.from_user.id, due_iso)
         await state.clear()
 
         if ok:
             task = await storage.get_task(task_id, query.from_user.id)
             await query.answer("Дедлайн сохранён.")
             if task:
-                prefix = f"Дедлайн установлен: {format_dt(task.get('due_at'))}"
+                prefix = f"Дедлайн установлен: {_utc_iso_to_local_str(task.get('due_at'), off)}"
                 await render_task_card(query, task, prefix=prefix)
                 return
             await show_screen(query, "Дедлайн сохранён, но задача не найдена.")
@@ -1397,6 +1368,38 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
         return
 
     await query.answer("Неизвестное действие.", show_alert=True)
+
+
+def _dp_state_to_utc_iso(data: dict, off_minutes: int) -> str:
+    """
+    ЛОКАЛЬ (компоненты из FSM) -> UTC ISO.
+    Формула: UTC = local + offset (offset = server - user).
+    """
+    y = int(data["dp_year"]); m = int(data["dp_month"]); d = int(data["dp_day"])
+    hh = int(data["dp_hour"]); mm = int(data["dp_minute"])
+    local = dt.datetime(y, m, d, hh, mm)
+    utc_naive = local + dt.timedelta(minutes=int(off_minutes or 0))
+    return utc_naive.replace(tzinfo=dt.timezone.utc, second=0, microsecond=0).isoformat()
+
+
+def _utc_iso_to_local_str(iso_str: Optional[str], off_minutes: int) -> str:
+    """
+    UTC ISO -> строка локального времени пользователя.
+    Формула: local = UTC - offset.
+    """
+    if not iso_str:
+        return "—"
+    try:
+        d = dt.datetime.fromisoformat(iso_str)
+    except Exception:
+        return iso_str
+    if d.tzinfo is None:
+        utc_naive = d
+    else:
+        utc_naive = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    local = utc_naive - dt.timedelta(minutes=int(off_minutes or 0))
+    return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+
 
 
 @todo_router.message(StateFilter(DatePickerState.picking))
