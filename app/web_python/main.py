@@ -2,6 +2,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import datetime as dt
+from app.db.core import get_user_tz_offset
 
 from fastapi import FastAPI
 from fastapi import HTTPException, status, Request, Form, Query
@@ -30,6 +31,33 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="TODO Web (Python templates)")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+def _to_local_str(dt_value, offset_minutes: int) -> str:
+    """
+    Переводит UTC-дату/дату без tz в строку локального времени пользователя.
+    tz_offset_minutes хранится как (server - user), поэтому:
+        local = utc - offset
+    """
+    if not dt_value:
+        return "—"
+
+    # на вход может прийти str или datetime
+    if isinstance(dt_value, str):
+        try:
+            d = dt.datetime.fromisoformat(dt_value)
+        except Exception:
+            return dt_value
+    else:
+        d = dt_value
+
+    # приводим к UTC-naive
+    if d.tzinfo is None:
+        d_utc = d
+    else:
+        d_utc = d.astimezone(dt.timezone.utc).replace(tzinfo=None)
+
+    local = d_utc - dt.timedelta(minutes=int(offset_minutes or 0))
+    return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+
 @app.on_event("startup")
 async def on_startup():
     await init_db_and_schema()
@@ -50,11 +78,19 @@ async def index(
     mode = "normal" | "delete" для режима удаления.
     """
     user_id = await _resolve_user_id_or_403(token)
+    offset = await get_user_tz_offset(user_id)
+    offset = int(offset or 0)
 
     tasks = await storage.list_user_tasks(user_id)
+    tasks_view = []
     for t in tasks:
-        t["created_at_fmt"] = dates.format_dt(t.get("created_at"))
-        t["due_at_fmt"] = dates.format_dt(t.get("due_at"))
+        tasks_view.append(
+            {
+                **t,
+                "created_at_fmt": _to_local_str(t.get("created_at"), offset),
+                "due_at_fmt": _to_local_str(t.get("due_at"), offset),
+            }
+        )
 
     delete_mode = mode == "delete"
 
@@ -62,7 +98,7 @@ async def index(
         "index.html",
         {
             "request": request,
-            "tasks": tasks,
+            "tasks": tasks_view,
             "user_id": user_id,
             "token": token,
             "delete_mode": delete_mode,
@@ -118,13 +154,18 @@ async def task_detail(
 ):
     user_id = await _resolve_user_id_or_403(token)
 
+    offset = await get_user_tz_offset(user_id)
+    offset = int(offset or 0)
+
     task = await storage.get_task(task_id, user_id)
     if task is None:
         return RedirectResponse(url=f"/?token={token}", status_code=303)
 
-    task_view = dict(task)
-    task_view["created_at_fmt"] = dates.format_dt(task.get("created_at"))
-    task_view["due_at_fmt"] = dates.format_dt(task.get("due_at"))
+    task_view = {
+        **task,
+        "created_at_fmt": _to_local_str(task.get("created_at"), offset),
+        "due_at_fmt": _to_local_str(task.get("due_at"), offset),
+    }
 
     due_input = ""
     if task.get("due_at"):

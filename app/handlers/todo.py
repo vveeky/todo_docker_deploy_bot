@@ -1330,7 +1330,7 @@ async def dp_callback(query: CallbackQuery, state: FSMContext):
         await _dp_show_screen(query, state)
         return
 
-    # сохранение
+    # сохранение результата для задачи чтобы можно было сохранить дедлайн и выйти из пикера
     if kind == "save":
         mode = data.get("dp_mode")
         if mode != "due":
