@@ -1,19 +1,18 @@
 # app/web_python/main.py
 from pathlib import Path
-from dotenv import load_dotenv
 import datetime as dt
-from app.db.core import get_user_tz_offset
 
-from fastapi import FastAPI
-from fastapi import HTTPException, status, Request, Form, Query
-from app.db.core import get_user_id_by_token
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, status, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 
-from app.utils import storage, dates
+from app.db.core import init_db_and_schema, get_user_id_by_token, get_user_tz_offset
+from app.utils import storage
 
-from app.db.core import init_db_and_schema
+
+# === Загрузка .env ===
 
 # ищем .env в корне проекта (на 2 уровня вверх от этого файла: app/web_python -> app -> проект)
 project_root = Path(__file__).resolve().parents[2]
@@ -31,9 +30,13 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="TODO Web (Python templates)")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+
+# === Хелперы для времени ===
+
 def _to_local_str(dt_value, offset_minutes: int) -> str:
     """
-    Переводит UTC-дату/дату без tz в строку локального времени пользователя.
+    Переводит UTC-дату/дату без tz в строку ЛОКАЛЬНОГО времени пользователя.
+
     tz_offset_minutes хранится как (server - user), поэтому:
         local = utc - offset
     """
@@ -58,6 +61,31 @@ def _to_local_str(dt_value, offset_minutes: int) -> str:
     local = d_utc - dt.timedelta(minutes=int(offset_minutes or 0))
     return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
 
+
+def _local_str_to_utc_iso(due_raw: str, offset_minutes: int) -> str | None:
+    """
+    Строка 'YYYY-MM-DD HH:MM' в ЛОКАЛЬНОМ времени пользователя -> ISO в UTC.
+
+    tz_offset_minutes хранится как (server - user), поэтому:
+        utc = local + offset
+    """
+    if not due_raw:
+        return None
+    try:
+        local = dt.datetime.strptime(due_raw, "%Y-%m-%d %H:%M")
+    except Exception:
+        return None
+
+    utc_naive = local + dt.timedelta(minutes=int(offset_minutes or 0))
+    return utc_naive.replace(
+        tzinfo=dt.timezone.utc,
+        second=0,
+        microsecond=0,
+    ).isoformat()
+
+
+# === Старт/шаблоны ===
+
 @app.on_event("startup")
 async def on_startup():
     await init_db_and_schema()
@@ -65,6 +93,8 @@ async def on_startup():
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+
+# === Роуты ===
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
@@ -119,7 +149,6 @@ async def add_task(
     return RedirectResponse(url=f"/?token={token}", status_code=303)
 
 
-
 @app.post("/tasks/{task_id}/toggle")
 async def toggle_task(
     task_id: int,
@@ -145,7 +174,6 @@ async def delete_task(
     return RedirectResponse(url=f"/?token={token}", status_code=303)
 
 
-
 @app.get("/tasks/{task_id}", response_class=HTMLResponse)
 async def task_detail(
     request: Request,
@@ -167,13 +195,13 @@ async def task_detail(
         "due_at_fmt": _to_local_str(task.get("due_at"), offset),
     }
 
+    # поле ввода дедлайна — в ЛОКАЛЬНОМ времени пользователя
     due_input = ""
     if task.get("due_at"):
-        try:
-            dt_obj = dt.datetime.fromisoformat(task["due_at"])
-            due_input = dt_obj.strftime("%Y-%m-%d %H:%M")
-        except Exception:
-            due_input = task["due_at"]
+        due_input = _to_local_str(task.get("due_at"), offset)
+        # input ожидает формат 'YYYY-MM-DD HH:MM'
+        if len(due_input) >= 16:
+            due_input = due_input[:16]
 
     return templates.TemplateResponse(
         "task_detail.html",
@@ -203,18 +231,22 @@ async def edit_task(
     if task is None:
         return RedirectResponse(url=f"/?token={token}", status_code=303)
 
-    fields = {}
+    fields: dict = {}
 
     if text:
         fields["text"] = text
     else:
         fields["text"] = task.get("text", "")
 
+    offset = await get_user_tz_offset(user_id)
+    offset = int(offset or 0)
+
     if due_raw:
-        try:
-            dt_obj = dt.datetime.strptime(due_raw, "%Y-%m-%d %H:%M")
-            fields["due_at"] = dt_obj.replace(second=0, microsecond=0).isoformat()
-        except Exception:
+        # пользователь ввёл ЛОКАЛЬНОЕ время → переводим в UTC перед сохранением
+        due_iso = _local_str_to_utc_iso(due_raw, offset)
+        if due_iso is not None:
+            fields["due_at"] = due_iso
+        else:
             # если формат неправильный, оставляем старый дедлайн
             fields["due_at"] = task.get("due_at")
     else:
@@ -228,6 +260,8 @@ async def edit_task(
     )
 
 
+# === Вспомогательное ===
+
 async def _resolve_user_id_or_403(token: str) -> int:
     user_id = await get_user_id_by_token(token)
     if not user_id:
@@ -236,7 +270,6 @@ async def _resolve_user_id_or_403(token: str) -> int:
             detail="Invalid or expired web token",
         )
     return user_id
-
 
 
 if __name__ == "__main__":
