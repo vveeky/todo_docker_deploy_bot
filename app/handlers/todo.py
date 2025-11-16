@@ -194,7 +194,7 @@ def _dp_build_kb_for_stage(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 ),
             ]
         )
@@ -240,7 +240,7 @@ def _dp_build_kb_for_stage(
                     text="Год", callback_data="dp:stage:year"
                 ),
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 ),
             ]
         )
@@ -280,7 +280,7 @@ def _dp_build_kb_for_stage(
                     text="Год", callback_data="dp:stage:year"
                 ),
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 ),
             ]
         )
@@ -320,7 +320,7 @@ def _dp_build_kb_for_stage(
                     text="Год", callback_data="dp:stage:year"
                 ),
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 ),
             ]
         )
@@ -340,7 +340,7 @@ def _dp_build_kb_for_stage(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 ),
             ]
         )
@@ -362,7 +362,7 @@ def _dp_build_kb_year() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="✅ Сохранить", callback_data="dp:save"
+                    text="⬅️ Назад к задаче", callback_data="dp:save"
                 )
             ],
         ]
@@ -764,7 +764,7 @@ async def done_handler(event: Union[Message, CallbackQuery]):
         pass
 
     prefix = (
-        f"Задача #{tid} помечена как выполненная."
+        f"Теперь задача считается выполненной."
         if ok
         else "Задача не найдена."
     )
@@ -1063,7 +1063,7 @@ async def cb_task_mark_done(query: CallbackQuery):
     if ok:
         task = await storage.get_task(tid, query.from_user.id)
         if task:
-            await render_task_card(query, task, prefix=f"Задача #{tid} помечена как выполненная.")
+            await render_task_card(query, task, prefix=f"Теперь задача считается выполненной.")
             return
 
     await query.message.answer("Задача не найдена или не относится к вам.")
