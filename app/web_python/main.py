@@ -203,6 +203,7 @@ async def task_detail(
     
     task_view = {
         **task,
+        "display_num": display_num,
         "created_at_fmt": _to_local_str(task.get("created_at"), offset),
         "due_at_fmt": _to_local_str(task.get("due_at"), offset),
     }

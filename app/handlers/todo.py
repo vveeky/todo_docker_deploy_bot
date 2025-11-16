@@ -596,7 +596,7 @@ async def render_task_card(
     created_str = _fmt_utc_iso_to_local_str(task.get("created_at"))
 
     text = (
-        f"Задача #{task['id']}\n"
+        f"Задача #{display_num}\n"
         f"Текст: {task['text']}\n"
         f"Статус: {'✅ выполнена' if task.get('is_done') else '✳️ в работе'}\n"
         f"Дедлайн: {due_str}\n"
