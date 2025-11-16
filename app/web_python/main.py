@@ -189,6 +189,18 @@ async def task_detail(
     if task is None:
         return RedirectResponse(url=f"/?token={token}", status_code=303)
 
+    # считаем "человеческий" номер задачи (позиция в списке)
+    tasks_all = await storage.list_user_tasks(user_id)
+    tasks_sorted = sorted(
+        tasks_all,
+        key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
+    )
+    display_num = task_id
+    for idx, t in enumerate(tasks_sorted, start=1):
+        if int(t.get("id", -1)) == task_id:
+            display_num = idx
+            break
+    
     task_view = {
         **task,
         "created_at_fmt": _to_local_str(task.get("created_at"), offset),

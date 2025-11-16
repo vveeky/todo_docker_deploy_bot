@@ -10,10 +10,9 @@ async def to_server_due_dt(
     due_at_str: Optional[str],
 ) -> Optional[dt.datetime]:
     """
-    Преобразует локальный дедлайн пользователя (ISO-строка) в серверное время.
-
-    tz_offset_minutes хранится как (server - user) в минутах.
-    Серверное время дедлайна = локальное + offset.
+    СТАРАЯ логика: интерпретация локального дедлайна пользователя как server = local + offset.
+    Сейчас в коде больше не используется, оставлена только на случай,
+    если где-то ещё будет нужна.
     """
     if not due_at_str:
         return None
@@ -31,30 +30,44 @@ async def to_server_due_dt(
 
 
 async def is_due_now(
-    user_id: int,
+    user_id: int,  # параметр оставляем для совместимости сигнатуры
     due_at_str: Optional[str],
     now: Optional[dt.datetime] = None,
     window_seconds: int = 90,
 ) -> bool:
     """
-    True, если дедлайн (локальный у пользователя) уже наступил
-    с учётом tz_offset_minutes.
+    True, если дедлайн уже наступил.
 
-    Проверяем окно [server_due, server_due + window_seconds].
+    ВАЖНО: сейчас due_at хранится в БД в UTC (TIMESTAMPTZ),
+    а storage.list_due_tasks() возвращает ISO-строку в UTC.
+
+    Поэтому здесь:
+    - парсим ISO как UTC,
+    - сравниваем с текущим временем в UTC,
+    - ничего не делаем с tz_offset.
     """
-    if now is None:
-        now = dt.datetime.now()
-
-    server_due = await to_server_due_dt(user_id, due_at_str)
-    if server_due is None:
+    if not due_at_str:
         return False
 
-    # Приводим оба datetime к наивным (без tzinfo), чтобы избежать
-    # TypeError: can't subtract offset-naive and offset-aware datetimes
-    if server_due.tzinfo is not None:
-        server_due = server_due.astimezone(dt.timezone.utc).replace(tzinfo=None)
-    if now.tzinfo is not None:
-        now = now.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    # now приводим к aware UTC
+    if now is None:
+        now_utc = dt.datetime.now(dt.timezone.utc)
+    else:
+        if now.tzinfo is None:
+            now_utc = now.replace(tzinfo=dt.timezone.utc)
+        else:
+            now_utc = now.astimezone(dt.timezone.utc)
 
-    delta = (now - server_due).total_seconds()
+    # due_at_str -> aware UTC
+    try:
+        d = dt.datetime.fromisoformat(due_at_str)
+    except Exception:
+        return False
+
+    if d.tzinfo is None:
+        due_utc = d.replace(tzinfo=dt.timezone.utc)
+    else:
+        due_utc = d.astimezone(dt.timezone.utc)
+
+    delta = (now_utc - due_utc).total_seconds()
     return 0 <= delta <= window_seconds

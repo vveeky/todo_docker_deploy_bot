@@ -580,6 +580,18 @@ async def render_task_card(
         local = utc_naive - dt.timedelta(minutes=off)
         return local.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
 
+    # считаем "человеческий" номер задачи (позиция в списке)
+    tasks = await storage.list_user_tasks(user_id)
+    tasks_sorted = sorted(
+        tasks,
+        key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
+    )
+    display_num = tid
+    for idx, t in enumerate(tasks_sorted, start=1):
+        if int(t.get("id", -1)) == tid:
+            display_num = idx
+            break
+    
     due_str = _fmt_utc_iso_to_local_str(task.get("due_at"))
     created_str = _fmt_utc_iso_to_local_str(task.get("created_at"))
 

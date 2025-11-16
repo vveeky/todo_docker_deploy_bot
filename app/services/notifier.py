@@ -34,7 +34,7 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
     try:
         while True:
             try:
-                now = datetime.datetime.now()
+                now = datetime.datetime.now(datetime.timezone.utc)
                 due_tasks = await _get_due_tasks(now)
 
                 if due_tasks:
@@ -53,7 +53,20 @@ async def notifier(bot: Bot, interval_seconds: int = 30) -> None:
                     if not await is_due_now(user_id, due_at, now=now):
                         continue
 
-                    message_text = f"⏰ Напоминание: задача №{task_id}\n{text}"
+                    # считаем человеческий номер задачи
+                    tasks_all = await storage.list_user_tasks(user_id)
+                    tasks_sorted = sorted(
+                        tasks_all,
+                        key=lambda t: (t.get("is_done", 0), t.get("id", 0)),
+                    )
+
+                    display_num = task_id
+                    for idx, tt in enumerate(tasks_sorted, start=1):
+                        if int(tt.get("id", -1)) == task_id:
+                            display_num = idx
+                            break
+
+                    message_text = f"⏰ Напоминание: задача №{display_num}\n{text}"
                     if due_at:
                         message_text += f"\nДедлайн: {due_at}"
 
