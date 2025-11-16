@@ -87,7 +87,7 @@ def tasks_page_keyboard(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="🌐 Открыть сайт",
+                    text="🌐 Открыть мини-приложение",
                     web_app=WebAppInfo(url=site_url),
                 )
             ]

@@ -507,7 +507,7 @@ async def render_tasks_screen(
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🌐 Открыть сайт",
+                        text="🌐 Открыть мини-приложение",
                         web_app=WebAppInfo(url=site_url),
                     )
                 ],
@@ -618,7 +618,7 @@ async def render_task_card(
                 InlineKeyboardButton(text="Отметить выполненной", callback_data=f"task:mark_done:{tid}"),
                 InlineKeyboardButton(text="Удалить", callback_data=f"task:confirm_delete:{tid}"),
             ],
-            [InlineKeyboardButton(text="🌐 Детальный вид на сайте", web_app=WebAppInfo(url=detail_url))],
+            [InlineKeyboardButton(text="🌐 Детальный вид в мини-приложении", web_app=WebAppInfo(url=detail_url))],
             [InlineKeyboardButton(text="⬅️ К списку задач", callback_data="cmd_list")],
         ]
     )
